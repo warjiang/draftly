@@ -1,0 +1,86 @@
+/* 仿 Linear 风格 fixture：深色背景、#5e6ad2 主色、Inter、8px 间距基数 */
+:root {
+  --bg: #0f1011;
+  --surface: #161718;
+  --surface-2: #1c1d1f;
+  --primary: #5e6ad2;
+  --text: #e8e8e6;
+  --muted: #8a8f98;
+  --border: #23252a;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0f1011;
+  color: #e8e8e6;
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.header {
+  background: #161718;
+  border-bottom: 1px solid #23252a;
+  padding: 16px 24px;
+  font-size: 15px;
+}
+.hero { padding: 96px 24px 64px; text-align: center; }
+.hero h1 {
+  font-size: 56px;
+  color: #e8e8e6;
+  margin-bottom: 24px;
+  letter-spacing: -0.02em;
+}
+.hero h2 { font-size: 32px; color: #e8e8e6; margin-bottom: 16px; }
+.hero p { font-size: 18px; color: #8a8f98; margin-bottom: 32px; }
+.section { padding: 64px 24px; max-width: 1120px; margin: 0 auto; }
+.section h3 { font-size: 24px; margin-bottom: 16px; }
+.card {
+  background: #1c1d1f;
+  border: 1px solid #23252a;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.card:hover { border-color: #5e6ad2; }
+.section .card.featured { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.btn-primary {
+  background: #5e6ad2;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 15px;
+}
+.btn-primary:hover { background: #4f5bcb; }
+.btn-ghost {
+  color: #8a8f98;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.badge {
+  background: rgba(94, 106, 210, 0.16);
+  color: #5e6ad2;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.nav-link { color: #8a8f98; font-size: 14px; margin-right: 24px; }
+.nav-link.active { color: #5e6ad2; }
+.footer {
+  border-top: 1px solid #23252a;
+  padding: 40px 24px;
+  color: #8a8f98;
+  font-size: 13px;
+  background: #161718;
+}
+.input {
+  background: #1c1d1f;
+  border: 1px solid #23252a;
+  border-radius: 8px;
+  color: #e8e8e6;
+  padding: 8px 16px;
+  font-size: 15px;
+}
+.input:focus { border-color: #5e6ad2; box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.3); }
+.small-note { font-size: 13px; color: #8a8f98; }
+h4 { font-size: 18px; }

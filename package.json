@@ -1,0 +1,20 @@
+{
+  "name": "draftly",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node packages/server/src/dev.js",
+    "start": "node packages/server/src/dev.js",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "smoke": "node scripts/smoke-phase1.mjs && node scripts/smoke-phase2.mjs && node scripts/smoke-phase3.mjs && node scripts/smoke-phase4.mjs",
+    "check": "npm run build && npm test && npm run smoke"
+  }
+}

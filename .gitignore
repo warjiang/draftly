@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.draftly/
+.env
+.env.*
+!.env.example
+.DS_Store
+artifacts/
