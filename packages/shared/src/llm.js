@@ -169,6 +169,9 @@ export const MOCK_EDIT_RULES = [
 /** 编辑模式的 system prompt 标记（nl-edit.js buildEditPrompt 注入） */
 export const EDIT_PROMPT_MARKER = '元素编辑模式';
 
+/** HTML 草稿模式的 system prompt 标记（server draft-prompts.js buildDraftPrompt 注入，M1） */
+export const DRAFT_PROMPT_MARKER = 'HTML 草稿模式';
+
 /** 编辑模式确定性输出：匹配所有规则，合并 class token，输出 ```json 围栏 */
 function mockEdit(messages) {
   const instruction = messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
@@ -187,6 +190,146 @@ function mockEdit(messages) {
   if (classText) out.class = classText;
   if (style) out.style = style;
   return '```json\n' + JSON.stringify(out) + '\n```';
+}
+
+/* ---------------- MockProvider HTML 草稿模板（M1） ---------------- */
+
+/** Mock HTML 的基准主色；若 messages 含 DESIGN.md primary 则整体替换（确定性） */
+const MOCK_HTML_BRAND = '#3f4a5a';
+
+function mockHtmlDoc(title, body, extraCss = '') {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${title}</title>
+<style>
+:root { --brand: ${MOCK_HTML_BRAND}; --bg: #f7f7f5; --surface: #ffffff; --text: #2e2e2c; --muted: #6a6a64; --border: #e6e6e1; }
+* { box-sizing: border-box; margin: 0; }
+body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+a { color: var(--brand); }
+.btn { display: inline-block; padding: 10px 20px; border-radius: 10px; border: 1px solid transparent; background: var(--brand); color: #fff; font-size: 14px; cursor: pointer; text-decoration: none; transition: opacity .15s; }
+.btn:hover { opacity: .88; }
+.btn.ghost { background: transparent; color: var(--brand); border-color: var(--brand); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.muted { color: var(--muted); font-size: 13px; }
+${extraCss}
+</style>
+</head>
+<body>
+${body}
+</body>
+</html>`;
+}
+
+const MOCK_HTML_LOGIN = mockHtmlDoc('登录', `
+<main class="center">
+  <form class="card login-card">
+    <h2>欢迎回来</h2>
+    <p class="muted">登录以继续使用你的账户</p>
+    <label>邮箱<input type="email" placeholder="you@example.com" /></label>
+    <label>密码<input type="password" placeholder="••••••••" /></label>
+    <button class="btn" type="button">登录</button>
+    <p class="muted" style="text-align:center">还没有账户？<a href="#">立即注册</a></p>
+  </form>
+</main>`, `
+.center { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.login-card { width: 360px; }
+.login-card h2 { margin-bottom: 4px; }
+.login-card label { display: block; font-size: 13px; margin: 16px 0 0; }
+.login-card input { width: 100%; margin-top: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+.login-card .btn { width: 100%; margin: 24px 0 16px; }
+`);
+
+const MOCK_HTML_LANDING = mockHtmlDoc('产品落地页', `
+<nav class="nav">
+  <div class="logo">Draftly</div>
+  <div class="nav-links"><a href="#features">功能</a><a href="#pricing">定价</a><a href="#">文档</a></div>
+  <a class="btn" href="#">免费开始</a>
+</nav>
+<header class="hero">
+  <span class="badge">v1.0 现已发布</span>
+  <h1>用 AI 加速你的界面设计</h1>
+  <p class="muted">从一句话到可运行的设计草稿，让原型到代码的距离缩短到几分钟。</p>
+  <div><a class="btn" href="#">免费开始</a> <a class="btn ghost" href="#">查看演示</a></div>
+</header>
+<section id="features" class="grid">
+  <div class="card"><h3>可视化编辑</h3><p class="muted">点选元素，实时预览，所见即所得。</p></div>
+  <div class="card"><h3>AI 生成</h3><p class="muted">一句话描述页面，AI 自动生成可用草稿。</p></div>
+  <div class="card"><h3>设计系统</h3><p class="muted">DESIGN.md 驱动的一致视觉语言。</p></div>
+</section>
+<footer class="footer muted">© 2026 Draftly</footer>`, `
+.nav { display: flex; align-items: center; justify-content: space-between; max-width: 960px; margin: 0 auto; padding: 20px 24px; }
+.nav .logo { font-weight: 700; font-size: 18px; }
+.nav-links a { margin: 0 12px; text-decoration: none; font-size: 14px; }
+.hero { text-align: center; padding: 96px 24px 64px; }
+.hero h1 { font-size: 40px; margin: 16px 0; }
+.hero p { max-width: 520px; margin: 0 auto 32px; font-size: 15px; }
+.badge { display: inline-block; padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 960px; margin: 0 auto; padding: 48px 24px; }
+.footer { text-align: center; padding: 32px 0; border-top: 1px solid var(--border); }
+`);
+
+const MOCK_HTML_DASHBOARD = mockHtmlDoc('仪表盘', `
+<main class="wrap">
+  <header class="top">
+    <h1>仪表盘</h1>
+    <button class="btn ghost">导出报表</button>
+  </header>
+  <section class="stats">
+    <div class="card"><p class="muted">总用户</p><h3>12,480</h3><span class="delta up">+8.2%</span></div>
+    <div class="card"><p class="muted">活跃用户</p><h3>8,932</h3><span class="delta up">+3.1%</span></div>
+    <div class="card"><p class="muted">收入</p><h3>¥86,400</h3><span class="delta up">+12.4%</span></div>
+    <div class="card"><p class="muted">转化率</p><h3>4.6%</h3><span class="delta down">-0.8%</span></div>
+  </section>
+  <section class="card">
+    <h3>最近订单</h3>
+    <table>
+      <thead><tr><th>订单号</th><th>客户</th><th>金额</th><th>状态</th></tr></thead>
+      <tbody>
+        <tr><td>#1001</td><td>张三</td><td>¥1,200</td><td>已支付</td></tr>
+        <tr><td>#1002</td><td>李四</td><td>¥860</td><td>待发货</td></tr>
+        <tr><td>#1003</td><td>王五</td><td>¥2,340</td><td>已支付</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>`, `
+.wrap { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+.top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stats h3 { font-size: 24px; margin: 4px 0; }
+.delta { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.delta.up { color: #2f7d4f; background: #e7f4ec; }
+.delta.down { color: #b4544a; background: #faeceb; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; }
+`);
+
+const MOCK_HTML_GENERIC = mockHtmlDoc('设计草稿', `
+<main class="wrap">
+  <h1>页面标题</h1>
+  <div class="card">
+    <p>这是根据你的描述生成的页面草稿，可继续对话迭代或点选元素修改。</p>
+    <a class="btn" href="#">主要操作</a>
+    <a class="btn ghost" href="#">次要操作</a>
+  </div>
+</main>`, `
+.wrap { max-width: 720px; margin: 0 auto; padding: 40px 24px; }
+.wrap h1 { margin-bottom: 24px; }
+.wrap .card p { margin-bottom: 16px; }
+`);
+
+/** 草稿模式确定性输出：关键词路由 + DESIGN.md 主色替换 */
+function mockHtmlDraft(text) {
+  let page;
+  if (/登录|登陆|login|sign[\s-]?in/i.test(text)) page = MOCK_HTML_LOGIN;
+  else if (/仪表盘|仪表板|dashboard|后台|管理页/i.test(text)) page = MOCK_HTML_DASHBOARD;
+  else if (/落地页|landing|官网|首页|主页|营销/i.test(text)) page = MOCK_HTML_LANDING;
+  else page = MOCK_HTML_GENERIC;
+  const primary = extractPrimaryColor(text);
+  return primary ? page.split(MOCK_HTML_BRAND).join(primary) : page;
 }
 
 /* ---------------- MockProvider DESIGN.md 配色映射（Phase 3 Task 3.1） ---------------- */
@@ -223,6 +366,8 @@ export class MockProvider extends LLMProvider {
     const text = messages.map((m) => m.content).join('\n');
     // 编辑模式优先于页面模板路由（元素代码可能含「登录」等关键词）
     if (text.includes(EDIT_PROMPT_MARKER)) return mockEdit(messages);
+    // HTML 草稿模式（M1）：返回整页 HTML 而非 JSX
+    if (text.includes(DRAFT_PROMPT_MARKER)) return mockHtmlDraft(text);
     const primary = extractPrimaryColor(text);
     let page;
     if (/登录|登陆|login|sign[\s-]?in/i.test(text)) page = LOGIN_PAGE;

@@ -39,6 +39,29 @@ export DRAFTLY_LLM_MODEL="gpt-4o-mini" # 可选
 npm run dev
 ```
 
+或者把配置写入项目根目录的 `.env`（已 gitignore）：
+
+```dotenv
+DRAFTLY_LLM_BASE_URL=https://your-provider.example/v1
+DRAFTLY_LLM_API_KEY=your-api-key
+DRAFTLY_LLM_MODEL=gpt-4o-mini
+```
+
+启动时会自动加载 `.env`，未配置时仍回退到 Mock Provider。
+
+## 设计草稿（M1，新）
+
+打开 <http://127.0.0.1:4173/drafts.html>：输入一句话描述 → 生成 1~3 个单文件 HTML 设计草稿，
+iframe `srcdoc` 直接渲染（不走 JSX 转译），草稿与版本落盘在 `.draftly/drafts/`。
+
+```bash
+curl -X POST http://127.0.0.1:4173/api/draft/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"做一个深色科技感的 SaaS 定价页","variants":3}'
+```
+
+规划详见 [`docs/html-draft-plan.md`](docs/html-draft-plan.md)。旧版 React 原型编辑器仍在 <http://127.0.0.1:4173/>。
+
 ## 常用命令
 
 ```bash

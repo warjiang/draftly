@@ -4,6 +4,8 @@ import path from 'node:path';
 import { createProvider } from '../../shared/src/llm.js';
 import { createApiServer } from './http.js';
 import { SandboxManager } from './sandbox-manager.js';
+import { DraftStore } from './drafts.js';
+import { loadEnv } from './load-env.js';
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number.parseInt(process.env.PORT || '4173', 10);
@@ -16,8 +18,12 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
 
 fs.mkdirSync(sandboxDir, { recursive: true });
 
+// Load local .env (if present) before creating the LLM provider.
+loadEnv();
+
 const sandboxManager = new SandboxManager({ rootDir: sandboxDir });
-const server = createApiServer({ sandboxManager, provider: createProvider() });
+const drafts = new DraftStore({ rootDir: path.resolve(sandboxDir, '..', 'drafts') });
+const server = createApiServer({ sandboxManager, provider: createProvider(), drafts });
 
 server.on('error', (error) => {
   if (error.code === 'EADDRINUSE') {

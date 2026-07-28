@@ -28,18 +28,30 @@ import { patchElementClass, patchElementText, patchElementStyle } from './ast.js
 import { editElement } from './nl-edit.js';
 import { extractDesign, fetchSiteAssets } from './extract.js';
 import { loadTemplates, templateSummary, getTemplate, applyTemplate } from './templates.js';
+import { DraftStore } from './drafts.js';
+import { generateDrafts } from './draft-generate.js';
 
 const EDITOR_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../editor/public');
 const APP_FILE = 'src/App.jsx';
 
 /**
- * @param {{ sandboxManager: object, provider: object, editorDir?: string }} opts
+ * @param {{ sandboxManager: object, provider: object, editorDir?: string, drafts?: object }} opts
  * sandboxManager 需具备：sandbox(), ensureStarted(), history()
+ * drafts 缺省时惰性创建在 <sandbox 根目录>/../drafts
  */
-export function createApiServer({ sandboxManager, provider, editorDir = EDITOR_DIR } = {}) {
+export function createApiServer({ sandboxManager, provider, editorDir = EDITOR_DIR, drafts = null } = {}) {
+  let draftsStore = drafts;
+  const getDrafts = () => {
+    if (!draftsStore) {
+      draftsStore = new DraftStore({
+        rootDir: path.resolve(sandboxManager.sandbox().rootDir, '..', 'drafts'),
+      });
+    }
+    return draftsStore;
+  };
   const server = http.createServer(async (req, res) => {
     try {
-      await route(req, res, { sandboxManager, provider, editorDir });
+      await route(req, res, { sandboxManager, provider, editorDir, getDrafts });
     } catch (e) {
       sendJson(res, 500, { error: e.message });
     }
@@ -48,7 +60,7 @@ export function createApiServer({ sandboxManager, provider, editorDir = EDITOR_D
 }
 
 async function route(req, res, ctx) {
-  const { sandboxManager, provider, editorDir } = ctx;
+  const { sandboxManager, provider, editorDir, getDrafts } = ctx;
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
 
@@ -70,9 +82,46 @@ async function route(req, res, ctx) {
   }
 
   /* ---------- API ---------- */
-  await sandboxManager.ensureCreated();
   const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : null;
   const json = body ? safeJson(body) : null;
+
+  /* ---------- HTML 草稿（M1）：不依赖 sandbox，直接落盘 .draftly/drafts ---------- */
+  if (p === '/api/draft/generate' && req.method === 'POST') {
+    if (!json?.prompt) return sendJson(res, 400, { error: 'prompt required' });
+    // DESIGN.md 存在则作为设计契约注入 prompt；不存在/读取失败则按默认风格生成
+    let designMd = null;
+    try {
+      await sandboxManager.ensureCreated();
+      designMd = await sandboxManager.sandbox().readFile('DESIGN.md');
+    } catch { /* 无设计契约 */ }
+    try {
+      const result = await generateDrafts({
+        drafts: getDrafts(), provider,
+        prompt: json.prompt, variants: json.variants, designMd,
+      });
+      return sendJson(res, 200, result);
+    } catch (e) {
+      return sendJson(res, 502, { error: e.message });
+    }
+  }
+
+  if (p === '/api/drafts' && req.method === 'GET') {
+    return sendJson(res, 200, { drafts: await getDrafts().list() });
+  }
+
+  const draftGet = /^\/api\/draft\/([^/]+)$/.exec(p);
+  if (draftGet && req.method === 'GET') {
+    const v = url.searchParams.get('v');
+    try {
+      const { meta, html, version } = await getDrafts().readHtml(
+        decodeURIComponent(draftGet[1]), v ? Number(v) : null);
+      return sendJson(res, 200, { meta, html, version });
+    } catch (e) {
+      return sendJson(res, e.status || 500, { error: e.message });
+    }
+  }
+
+  await sandboxManager.ensureCreated();
 
   if (p === '/api/files' && req.method === 'GET') {
     return sendJson(res, 200, { files: await sandboxManager.sandbox().listFiles() });

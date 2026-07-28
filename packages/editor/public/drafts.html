@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>draftly · 设计草稿</title>
+<link rel="stylesheet" href="/drafts.css" />
+</head>
+<body>
+<header id="topbar">
+  <div class="brand">draftly <span class="tag">设计草稿</span></div>
+  <form id="gen-form">
+    <input id="gen-input" type="text" placeholder="描述你想要的页面，如：做一个深色科技感的 SaaS 定价页" autocomplete="off" />
+    <select id="gen-variants" title="同时生成的方案数">
+      <option value="1">1 个方案</option>
+      <option value="2">2 个方案</option>
+      <option value="3" selected>3 个方案</option>
+    </select>
+    <button type="submit" class="btn primary" id="gen-btn">生成草稿</button>
+  </form>
+  <nav class="nav-links">
+    <a href="/index.html">旧版编辑器 →</a>
+  </nav>
+</header>
+
+<main id="layout">
+  <!-- 左：草稿列表 -->
+  <aside id="sidebar">
+    <div class="pane-title">草稿列表</div>
+    <ul id="draft-list"></ul>
+    <p id="list-empty" class="hint">还没有草稿，输入描述开始生成</p>
+  </aside>
+
+  <!-- 中：预览画布 -->
+  <section id="stage">
+    <div id="stage-empty" class="stage-hint">← 选择左侧草稿查看预览</div>
+    <div id="stage-view" hidden>
+      <div id="stage-bar">
+        <div>
+          <div id="stage-title"></div>
+          <div id="stage-meta" class="hint"></div>
+        </div>
+        <div class="stage-actions">
+          <button id="btn-source" class="btn">查看源码</button>
+        </div>
+      </div>
+      <iframe id="preview" title="draft preview" sandbox="allow-same-origin"></iframe>
+    </div>
+  </section>
+</main>
+
+<!-- 源码弹层 -->
+<div id="source-modal" hidden>
+  <div id="source-box">
+    <div class="pane-title">HTML 源码 <button id="btn-close-source" class="btn">关闭</button></div>
+    <pre id="source-view"></pre>
+  </div>
+</div>
+
+<script type="module" src="/drafts-app.js"></script>
+</body>
+</html>
