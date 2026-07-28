@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>draftly editor</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header id="topbar">
+  <div class="brand">draftly</div>
+  <form id="gen-form">
+    <input id="gen-input" type="text" placeholder="描述页面，如：做一个登录页" autocomplete="off" />
+    <button type="submit" class="btn primary">生成</button>
+  </form>
+  <div class="actions">
+    <button id="btn-inspect" class="btn toggle" title="Inspect 模式：点击预览元素查看/编辑属性">⌖ Inspect 模式</button>
+    <button id="btn-undo" class="btn" title="撤销">↩ Undo</button>
+    <button id="btn-redo" class="btn" title="重做">↪ Redo</button>
+    <span id="sandbox-status" class="status">sandbox: …</span>
+  </div>
+</header>
+
+<main id="layout">
+  <!-- 左：组件 / 模板 双 Tab 面板 -->
+  <aside id="panel-components">
+    <div class="tabs">
+      <button class="tab active" id="tab-components" data-tab="components">组件</button>
+      <button class="tab" id="tab-templates" data-tab="templates">模板</button>
+    </div>
+    <div id="pane-components">
+      <p class="hint">拖拽到预览，或点击插入</p>
+      <ul id="component-list"></ul>
+    </div>
+    <div id="pane-templates" hidden>
+      <div class="tpl-filters">
+        <select id="tpl-filter-style"><option value="">全部风格</option></select>
+        <select id="tpl-filter-color"><option value="">全部颜色</option></select>
+      </div>
+      <div id="template-grid" class="tpl-grid"></div>
+      <p id="tpl-msg" class="hint"></p>
+    </div>
+  </aside>
+
+  <!-- 中：预览 + 底部代码 Tab -->
+  <section id="center">
+    <div id="preview-wrap">
+      <div class="pane-title">预览 <span class="hint">开启 Inspect 模式后点击元素即可查看与编辑</span></div>
+      <iframe id="preview" src="/preview/" title="preview"></iframe>
+    </div>
+    <div id="code-tab">
+      <div class="pane-title">代码 · src/App.jsx（只读）</div>
+      <pre id="code-view"></pre>
+    </div>
+  </section>
+
+  <!-- 右：属性面板 -->
+  <aside id="panel-props">
+    <h2>属性</h2>
+    <div id="props-empty" class="hint">开启 Inspect 模式并点击预览元素，或查看组件属性。</div>
+    <div id="props-editor" hidden>
+      <div class="field" id="nl-field">
+        <label>AI 指令（自然语言改元素）</label>
+        <input id="nl-instruction" type="text" placeholder="如：改成 36px 紫色渐变标题" autocomplete="off" />
+        <button id="apply-nl" class="btn primary">应用指令</button>
+      </div>
+      <hr class="sep" />
+      <div class="field"><label>元素</label><div id="sel-tag" class="mono"></div></div>
+      <div class="field"><label>loc</label><div id="sel-loc" class="mono small"></div></div>
+      <div class="field"><label>className</label><div id="sel-class" class="mono small wrap"></div></div>
+      <div class="field"><label>textContent</label><div id="sel-text" class="small wrap"></div></div>
+      <div class="field"><label>computedStyles</label>
+        <dl id="sel-styles" class="style-list"></dl>
+      </div>
+      <hr class="sep" />
+      <div class="field"><label>文本</label>
+        <input id="prop-text" type="text" />
+        <button id="apply-text" class="btn">应用文本</button>
+      </div>
+      <div class="field"><label>文字颜色</label>
+        <input id="prop-color" type="color" value="#2e2e2c" />
+      </div>
+      <div class="field"><label>字号</label>
+        <select id="prop-fontsize">
+          <option value="13px">13px</option>
+          <option value="14px" selected>14px</option>
+          <option value="18px">18px</option>
+          <option value="24px">24px</option>
+          <option value="32px">32px</option>
+        </select>
+      </div>
+      <button id="apply-style" class="btn primary">应用样式</button>
+      <div id="patch-msg" class="hint"></div>
+    </div>
+    <div id="comp-info" hidden>
+      <h3 id="comp-name"></h3>
+      <div class="field"><label>import</label><div id="comp-import" class="mono small"></div></div>
+      <div class="field"><label>variants</label><div id="comp-variants"></div></div>
+      <div class="field"><label>props</label><div id="comp-props" class="mono small"></div></div>
+    </div>
+  </aside>
+</main>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

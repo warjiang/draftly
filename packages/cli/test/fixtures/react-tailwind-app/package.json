@@ -1,0 +1,13 @@
+{
+  "name": "react-tailwind-app",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "vite": "^5.0.0"
+  }
+}

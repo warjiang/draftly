@@ -1,0 +1,108 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { MockProvider } from '../../shared/src/llm.js';
+import { parseDesignMd } from '../../shared/src/design-md.js';
+import { SandboxManager } from '../src/sandbox-manager.js';
+import { createApiServer } from '../src/http.js';
+import { loadTemplates, validateTemplate, templateSummary, applyTemplate } from '../src/templates.js';
+
+test('模板库加载 10 个且全部通过 schema 校验', async () => {
+  const all = await loadTemplates();
+  assert.equal(all.length, 10);
+  const ids = all.map((t) => t.id);
+  for (const expected of ['linear', 'stripe', 'notion', 'vercel', 'airbnb', 'apple', 'github', 'figma', 'shopify', 'tailwind']) {
+    assert.ok(ids.includes(expected), `missing template: ${expected}`);
+  }
+  for (const t of all) {
+    assert.deepEqual(validateTemplate(t), []);
+    assert.equal(t.confidence, 'curated'); // 人工策展标注
+    const { meta } = parseDesignMd(t.designMd);
+    assert.match(meta.colors.primary, /^#[0-9a-f]{6}$/);
+  }
+});
+
+test('validateTemplate 反例', () => {
+  const base = { id: 'x', name: 'X', sourceUrl: 'https://x.com', tags: { style: [], industry: [], color: [] }, confidence: 'curated', designMd: '' };
+  assert.ok(validateTemplate(null).length > 0);
+  assert.ok(validateTemplate({ ...base, id: 'Bad ID' }).some((e) => e.includes('id')));
+  assert.ok(validateTemplate({ ...base, designMd: '' }).some((e) => e.includes('designMd')));
+  assert.ok(validateTemplate({ ...base, tags: { style: 'x' } }).some((e) => e.includes('tags')));
+  assert.ok(validateTemplate({ ...base, designMd: 'no frontmatter' }).some((e) => e.includes('front matter')));
+});
+
+test('templateSummary 含色板预览数据', async () => {
+  const stripe = (await loadTemplates()).find((t) => t.id === 'stripe');
+  const s = templateSummary(stripe);
+  assert.equal(s.colors.primary, '#635bff');
+  assert.ok(!('designMd' in s)); // 列表不带全文
+  assert.deepEqual(s.tags.color, ['紫', '蓝']);
+});
+
+/* ---------- HTTP 集成：apply → DESIGN.md 变更 + undo 还原 ---------- */
+
+let tmp, server, base, mgr;
+before(async () => {
+  tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-tpl-'));
+  mgr = new SandboxManager({ rootDir: path.join(tmp, 'proj') });
+  server = createApiServer({ sandboxManager: mgr, provider: new MockProvider() });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
+after(async () => {
+  await mgr.sandbox().stop().catch(() => {});
+  server.closeAllConnections?.();
+  await new Promise((r) => server.close(r));
+  await fs.rm(tmp, { recursive: true, force: true });
+});
+const api = async (p, method, body) => {
+  const res = await fetch(base + p, method ? {
+    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}),
+  } : undefined);
+  return { status: res.status, data: await res.json().catch(() => null) };
+};
+
+test('GET /api/templates 列表 + GET /api/templates/:id 详情', async () => {
+  const list = await api('/api/templates');
+  assert.equal(list.status, 200);
+  assert.equal(list.data.templates.length, 10);
+  assert.equal(list.data.templates.find((t) => t.id === 'linear').colors.primary, '#5e6ad2');
+  const detail = await api('/api/templates/stripe');
+  assert.equal(detail.status, 200);
+  assert.match(detail.data.designMd, /#635bff/);
+  const missing = await api('/api/templates/nope');
+  assert.equal(missing.status, 404);
+});
+
+test('POST /api/templates/apply → DESIGN.md 变更；undo 还原', async () => {
+  const before = (await api('/api/design-md')).data.content;
+  assert.match(before, /#3f4a5a/); // 默认主题
+  const r = await api('/api/templates/apply', 'POST', { id: 'stripe' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.applied, 'DESIGN.md');
+  const afterApply = (await api('/api/design-md')).data.content;
+  assert.match(afterApply, /#635bff/); // Stripe 主色
+  assert.notEqual(afterApply, before);
+  // undo 还原默认主题
+  const undo = await api('/api/history/undo', 'POST');
+  assert.equal(undo.status, 200);
+  assert.equal((await api('/api/design-md')).data.content, before);
+  // 未知 id → 404
+  const bad = await api('/api/templates/apply', 'POST', { id: 'nope' });
+  assert.equal(bad.status, 404);
+});
+
+test('apply + regenerate：生成页面使用模板配色（确定性 Mock 映射）', async () => {
+  const r = await api('/api/templates/apply', 'POST', { id: 'stripe', regenerate: true, prompt: '做一个落地页' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.regenerated, 'src/App.jsx');
+  const app = (await api('/api/file?path=src/App.jsx')).data.content;
+  assert.match(app, /design-tokens: primary=#635bff/);
+  assert.match(app, /background: '#635bff'/);
+  // undo 两次（regenerate + apply）还原
+  await api('/api/history/undo', 'POST');
+  await api('/api/history/undo', 'POST');
+  assert.match((await api('/api/design-md')).data.content, /#3f4a5a/);
+});
