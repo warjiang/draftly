@@ -172,6 +172,9 @@ export const EDIT_PROMPT_MARKER = '元素编辑模式';
 /** HTML 草稿模式的 system prompt 标记（server draft-prompts.js buildDraftPrompt 注入，M1） */
 export const DRAFT_PROMPT_MARKER = 'HTML 草稿模式';
 
+/** HTML 草稿迭代模式的 system prompt 标记（server draft-prompts.js buildIteratePrompt 注入，M2） */
+export const ITERATE_PROMPT_MARKER = 'HTML 草稿迭代模式';
+
 /** 编辑模式确定性输出：匹配所有规则，合并 class token，输出 ```json 围栏 */
 function mockEdit(messages) {
   const instruction = messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
@@ -332,6 +335,30 @@ function mockHtmlDraft(text) {
   return primary ? page.split(MOCK_HTML_BRAND).join(primary) : page;
 }
 
+/** 迭代模式确定性输出：根据指令关键词在当前 HTML 上做小修改（M2） */
+function mockHtmlIterate(text) {
+  // 从 prompt 中把当前 HTML 抠出来：buildIteratePrompt 格式为 "当前 HTML：\n...\n\n修改指令：..."
+  const htmlMatch = /当前 HTML：\n([\s\S]+?)\n\n修改指令：/.exec(text);
+  let html = htmlMatch ? htmlMatch[1].trim() : '';
+  if (!html) html = '<!doctype html><html><body><h1>草稿</h1></body></html>';
+  const instruction = text.split('修改指令：').pop() || '';
+
+  // 深色模式
+  if (/深色|暗色|dark|黑色/i.test(instruction)) {
+    const darkStyle = '<style>.m2-dark-override { background:#141414 !important; color:#f0f0f0 !important; }</style>';
+    html = html.replace(/<\/head>/i, `${darkStyle}</head>`);
+    html = html.replace(/<body([\s>]|[\s\S]*?)>/i, '<body$1 class="m2-dark-override">');
+  }
+  // 改标题 / 加标语
+  if (/标题|headline|slogan|标语/i.test(instruction)) {
+    html = html.replace(/<h1[\s\S]*?<\/h1>/i, '<h1 data-did="iter">已迭代标题</h1>');
+    html = html.replace(/<h2[\s\S]*?<\/h2>/i, '<h2 data-did="iter">已迭代副标题</h2>');
+  }
+  // 兜底：在 body 结束前加一个可见迭代标记，保证任何指令都有差异
+  html = html.replace(/<\/body>/i, '<div id="m2-iterated" style="display:none">iterated</div></body>');
+  return html;
+}
+
 /* ---------------- MockProvider DESIGN.md 配色映射（Phase 3 Task 3.1） ---------------- */
 
 /**
@@ -366,6 +393,8 @@ export class MockProvider extends LLMProvider {
     const text = messages.map((m) => m.content).join('\n');
     // 编辑模式优先于页面模板路由（元素代码可能含「登录」等关键词）
     if (text.includes(EDIT_PROMPT_MARKER)) return mockEdit(messages);
+    // HTML 草稿迭代模式（M2）：基于当前 HTML + 指令做确定性小修改
+    if (text.includes(ITERATE_PROMPT_MARKER)) return mockHtmlIterate(text);
     // HTML 草稿模式（M1）：返回整页 HTML 而非 JSX
     if (text.includes(DRAFT_PROMPT_MARKER)) return mockHtmlDraft(text);
     const primary = extractPrimaryColor(text);

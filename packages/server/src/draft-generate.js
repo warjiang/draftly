@@ -2,7 +2,7 @@
  * draft-generate.js — HTML 草稿生成管线（M1）
  * prompt → LLM（可并行多变体）→ 后处理（提取/清洗/data-did）→ 落盘版本
  */
-import { buildDraftPrompt } from './draft-prompts.js';
+import { buildDraftPrompt, buildIteratePrompt } from './draft-prompts.js';
 import { postProcessHtml } from './html-post.js';
 
 export const MAX_VARIANTS = 3;
@@ -26,4 +26,19 @@ export async function generateDrafts({ drafts, provider, prompt, variants = 1, d
     }),
   );
   return { drafts: results };
+}
+
+/**
+ * @param {{ drafts: import('./drafts.js').DraftStore, provider: object,
+ *           id: string, instruction: string }} opts
+ * @returns {Promise<{ id: string, title: string, version: number }>}
+ */
+export async function iterateDraft({ drafts, provider, id, instruction }) {
+  if (!instruction?.trim()) throw new Error('instruction required');
+  const { html } = await drafts.readHtml(id);
+  const messages = buildIteratePrompt({ currentHtml: html, instruction });
+  const raw = await provider.complete(messages);
+  const newHtml = postProcessHtml(raw);
+  const { meta, v } = await drafts.saveVersion(id, newHtml, { kind: 'iterate', instruction });
+  return { id: meta.id, title: meta.title, version: v };
 }

@@ -60,6 +60,7 @@ body {
 .btn:hover { opacity: .85; }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn-small { padding: 2px 8px; font-size: 11px; }
 
 .nav-links a { font-size: 13px; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .nav-links a:hover { color: var(--primary); }
@@ -71,6 +72,13 @@ body {
   width: 260px; flex-shrink: 0;
   background: var(--surface); border-right: 1px solid var(--border);
   padding: 12px; overflow-y: auto;
+}
+
+#rightbar {
+  width: 280px; flex-shrink: 0;
+  background: var(--surface); border-left: 1px solid var(--border);
+  padding: 12px; overflow-y: auto;
+  display: flex; flex-direction: column;
 }
 
 .pane-title {
@@ -111,6 +119,33 @@ body {
 #preview {
   flex: 1; width: 100%; border: none; background: #fff;
 }
+
+/* ---------- 迭代 & 版本 ---------- */
+#iterate-form { display: flex; flex-direction: column; gap: 8px; }
+#iterate-input {
+  width: 100%; padding: 8px 10px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  resize: vertical; font-family: inherit;
+}
+#iterate-input:focus { outline: none; border-color: var(--primary); }
+
+#version-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.version-item {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 10px; cursor: pointer; background: var(--surface);
+  transition: border-color .15s, background .15s;
+}
+.version-item:hover { border-color: var(--primary); }
+.version-item.active { border-color: var(--primary); background: #f0f3f7; }
+.version-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; font-weight: 600; margin-bottom: 4px;
+}
+.version-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 999px;
+  background: var(--primary); color: #fff; font-size: 10px; margin-right: 6px;
+}
+.version-sub { font-size: 11px; color: var(--muted); word-break: break-all; }
 
 /* ---------- 源码弹层 ---------- */
 #source-modal {

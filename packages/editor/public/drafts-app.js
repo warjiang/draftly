@@ -50,9 +50,10 @@ function renderList() {
 }
 
 /* ---------- 预览 ---------- */
-async function selectDraft(id) {
+async function selectDraft(id, v = null) {
+  const qs = v ? `?v=${v}` : '';
   try {
-    current = await api(`/api/draft/${encodeURIComponent(id)}`);
+    current = await api(`/api/draft/${encodeURIComponent(id)}${qs}`);
   } catch (e) {
     alert('加载草稿失败：' + e.message);
     return;
@@ -63,6 +64,50 @@ async function selectDraft(id) {
   $('#stage-meta').textContent = `${current.meta.prompt} · v${current.version}`;
   preview.srcdoc = current.html;
   renderList();
+  renderVersions();
+}
+
+function renderVersions() {
+  const ul = $('#version-list');
+  ul.innerHTML = '';
+  if (!current) return;
+  const versions = current.meta.versions.slice().reverse();
+  for (const ver of versions) {
+    const li = document.createElement('li');
+    const isCurrent = ver.v === current.version;
+    li.className = 'version-item' + (isCurrent ? ' active' : '');
+    const badge = ver.kind === 'iterate' ? '迭代' : '生成';
+    const time = new Date(ver.at).toLocaleString();
+    li.innerHTML = `
+      <div class="version-head">
+        <span><span class="version-badge">${badge}</span><span>v${ver.v}</span></span>
+        ${!isCurrent ? `<button class="btn btn-small rollback-btn" data-v="${ver.v}">回退</button>` : ''}
+      </div>
+      <div class="version-sub">${ver.instruction ? escapeHtml(ver.instruction) : time}</div>`;
+    li.addEventListener('click', (e) => {
+      if (e.target.classList.contains('rollback-btn')) {
+        e.stopPropagation();
+        rollbackVersion(ver.v);
+        return;
+      }
+      if (!isCurrent) selectDraft(current.meta.id, ver.v);
+    });
+    ul.appendChild(li);
+  }
+}
+
+async function rollbackVersion(v) {
+  if (!current) return;
+  if (!confirm(`确定回退到 v${v}？v${v} 之后的版本将被删除。`)) return;
+  try {
+    await api(`/api/draft/${encodeURIComponent(current.meta.id)}/rollback`, {
+      body: { v },
+    });
+    await loadDrafts();
+    await selectDraft(current.meta.id, v);
+  } catch (err) {
+    alert('回退失败：' + err.message);
+  }
 }
 
 /* ---------- 生成 ---------- */
@@ -87,6 +132,32 @@ $('#gen-form').addEventListener('submit', async (e) => {
     btn.textContent = '生成草稿';
   }
 });
+
+/* ---------- 迭代 ---------- */
+$('#iterate-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!current) return alert('请先选择一个草稿');
+  const instruction = $('#iterate-input').value.trim();
+  if (!instruction) return;
+  const btn = $('#iterate-btn');
+  btn.disabled = true;
+  btn.textContent = '迭代中…';
+  try {
+    await api(`/api/draft/${encodeURIComponent(current.meta.id)}/iterate`, {
+      body: { instruction },
+    });
+    $('#iterate-input').value = '';
+    await loadDrafts();
+    await selectDraft(current.meta.id);
+  } catch (err) {
+    alert('迭代失败：' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '迭代当前草稿';
+  }
+});
+
+
 
 /* ---------- 源码弹层 ---------- */
 $('#btn-source').addEventListener('click', () => {

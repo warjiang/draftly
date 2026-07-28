@@ -11,7 +11,7 @@ import { defaultDesignMd } from '../../shared/src/design-md.js';
 import { DraftStore } from '../src/drafts.js';
 import { extractHtml, sanitizeHtml, injectDataIds, postProcessHtml } from '../src/html-post.js';
 import { buildDraftPrompt } from '../src/draft-prompts.js';
-import { generateDrafts } from '../src/draft-generate.js';
+import { generateDrafts, iterateDraft } from '../src/draft-generate.js';
 import { SandboxManager } from '../src/sandbox-manager.js';
 import { createApiServer } from '../src/http.js';
 
@@ -146,6 +146,41 @@ test('generateDrafts：Mock 多变体落盘，variants 收敛到 1-3', async () 
   assert.equal(r3.drafts.length, 1);
 });
 
+/* ---------- iterateDraft ---------- */
+
+test('iterateDraft：基于当前版本生成 v2，记录 instruction', async () => {
+  const store = new DraftStore({ rootDir: path.join(tmp, 'iterate-drafts') });
+  const { drafts: created } = await generateDrafts({
+    drafts: store, provider: new MockProvider(), prompt: '做一个落地页', variants: 1,
+  });
+  const id = created[0].id;
+  const r = await iterateDraft({ drafts: store, provider: new MockProvider(), id, instruction: '改成深色模式' });
+  assert.equal(r.version, 2);
+  const latest = await store.readHtml(id);
+  assert.equal(latest.version, 2);
+  assert.match(latest.html, /m2-iterated/);
+  assert.equal(latest.meta.versions[1].kind, 'iterate');
+  assert.equal(latest.meta.versions[1].instruction, '改成深色模式');
+});
+
+/* ---------- rollbackVersion ---------- */
+
+test('rollbackVersion：删除目标版本之后的文件并截断历史', async () => {
+  const store = new DraftStore({ rootDir: path.join(tmp, 'rollback-drafts') });
+  const meta = await store.create({ prompt: 'x' });
+  await store.saveVersion(meta.id, '<html>v1</html>');
+  await store.saveVersion(meta.id, '<html>v2</html>');
+  await store.saveVersion(meta.id, '<html>v3</html>');
+  const { version } = await store.rollbackVersion(meta.id, 1);
+  assert.equal(version, 1);
+  const after = await store.readHtml(meta.id);
+  assert.equal(after.version, 1);
+  assert.equal(after.html, '<html>v1</html>');
+  assert.equal(after.meta.versions.length, 1);
+  await assert.rejects(() => store.readHtml(meta.id, 2), /draft not found/);
+  await assert.rejects(() => store.rollbackVersion(meta.id, 9), /draft not found/);
+});
+
 /* ---------- HTTP API 集成 ---------- */
 
 test('HTTP：/api/draft/generate → /api/drafts → /api/draft/:id', async () => {
@@ -181,6 +216,28 @@ test('HTTP：/api/draft/generate → /api/drafts → /api/draft/:id', async () =
 
     const missing = await call('/api/draft/no-such-id');
     assert.equal(missing.status, 404);
+
+    // M2：iterate / rollback
+    const iterBad = await call(`/api/draft/${id}/iterate`, 'POST', {});
+    assert.equal(iterBad.status, 400);
+
+    const iter = await call(`/api/draft/${id}/iterate`, 'POST', { instruction: '标题改一下' });
+    assert.equal(iter.status, 200);
+    assert.equal(iter.data.version, 2);
+
+    const afterIter = await call(`/api/draft/${id}`);
+    assert.equal(afterIter.data.version, 2);
+
+    const rollbackBad = await call(`/api/draft/${id}/rollback`, 'POST', {});
+    assert.equal(rollbackBad.status, 400);
+
+    const rollback = await call(`/api/draft/${id}/rollback`, 'POST', { v: 1 });
+    assert.equal(rollback.status, 200);
+    assert.equal(rollback.data.version, 1);
+
+    const afterRollback = await call(`/api/draft/${id}`);
+    assert.equal(afterRollback.data.version, 1);
+    assert.equal(afterRollback.data.meta.versions.length, 1);
   } finally {
     await new Promise((r) => server.close(r));
   }

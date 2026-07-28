@@ -47,6 +47,17 @@
       <iframe id="preview" title="draft preview" sandbox="allow-same-origin"></iframe>
     </div>
   </section>
+
+  <!-- 右：对话迭代 + 版本历史 -->
+  <aside id="rightbar">
+    <div class="pane-title">迭代</div>
+    <form id="iterate-form">
+      <textarea id="iterate-input" rows="3" placeholder="输入修改指令，如：导航栏改成毛玻璃"></textarea>
+      <button type="submit" class="btn primary" id="iterate-btn">迭代当前草稿</button>
+    </form>
+    <div class="pane-title" style="margin-top:16px">版本历史</div>
+    <ul id="version-list"></ul>
+  </aside>
 </main>
 
 <!-- 源码弹层 -->

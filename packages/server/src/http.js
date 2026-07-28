@@ -29,7 +29,7 @@ import { editElement } from './nl-edit.js';
 import { extractDesign, fetchSiteAssets } from './extract.js';
 import { loadTemplates, templateSummary, getTemplate, applyTemplate } from './templates.js';
 import { DraftStore } from './drafts.js';
-import { generateDrafts } from './draft-generate.js';
+import { generateDrafts, iterateDraft } from './draft-generate.js';
 
 const EDITOR_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../editor/public');
 const APP_FILE = 'src/App.jsx';
@@ -116,6 +116,33 @@ async function route(req, res, ctx) {
       const { meta, html, version } = await getDrafts().readHtml(
         decodeURIComponent(draftGet[1]), v ? Number(v) : null);
       return sendJson(res, 200, { meta, html, version });
+    } catch (e) {
+      return sendJson(res, e.status || 500, { error: e.message });
+    }
+  }
+
+  const draftIterate = /^\/api\/draft\/([^/]+)\/iterate$/.exec(p);
+  if (draftIterate && req.method === 'POST') {
+    if (!json?.instruction) return sendJson(res, 400, { error: 'instruction required' });
+    const id = decodeURIComponent(draftIterate[1]);
+    try {
+      const result = await iterateDraft({
+        drafts: getDrafts(), provider, id, instruction: json.instruction,
+      });
+      return sendJson(res, 200, result);
+    } catch (e) {
+      return sendJson(res, e.status || 502, { error: e.message });
+    }
+  }
+
+  const draftRollback = /^\/api\/draft\/([^/]+)\/rollback$/.exec(p);
+  if (draftRollback && req.method === 'POST') {
+    const v = json?.v ?? url.searchParams.get('v');
+    if (v === null || v === undefined || v === '') return sendJson(res, 400, { error: 'v required' });
+    const id = decodeURIComponent(draftRollback[1]);
+    try {
+      const { meta, version } = await getDrafts().rollbackVersion(id, v);
+      return sendJson(res, 200, { id: meta.id, title: meta.title, version });
     } catch (e) {
       return sendJson(res, e.status || 500, { error: e.message });
     }

@@ -79,4 +79,19 @@ export class DraftStore {
     const html = await fs.readFile(path.join(this._dir(id), `v${version}.html`), 'utf8');
     return { meta, html, version };
   }
+
+  /** 回退到指定版本：删除 v 之后的版本文件并截断 meta.versions */
+  async rollbackVersion(id, v) {
+    const meta = await this.meta(id);
+    const target = Number.parseInt(v, 10);
+    if (!Number.isInteger(target) || target < 1 || target > meta.versions.length) {
+      throw new DraftNotFoundError(`${id} v${target}`);
+    }
+    for (let i = meta.versions.length; i > target; i -= 1) {
+      await fs.unlink(path.join(this._dir(id), `v${i}.html`)).catch(() => {});
+    }
+    meta.versions = meta.versions.slice(0, target);
+    await fs.writeFile(this._metaPath(id), JSON.stringify(meta, null, 2));
+    return { meta, version: target };
+  }
 }
