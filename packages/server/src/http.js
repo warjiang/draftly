@@ -88,12 +88,19 @@ async function route(req, res, ctx) {
   /* ---------- HTML 草稿（M1）：不依赖 sandbox，直接落盘 .draftly/drafts ---------- */
   if (p === '/api/draft/generate' && req.method === 'POST') {
     if (!json?.prompt) return sendJson(res, 400, { error: 'prompt required' });
-    // DESIGN.md 存在则作为设计契约注入 prompt；不存在/读取失败则按默认风格生成
+    // 风格预设（M4）：指定 style 时用模板库的 designMd 作为设计契约；
+    // 否则 DESIGN.md 存在则注入；不存在/读取失败则按默认风格生成
     let designMd = null;
-    try {
-      await sandboxManager.ensureCreated();
-      designMd = await sandboxManager.sandbox().readFile('DESIGN.md');
-    } catch { /* 无设计契约 */ }
+    if (json.style) {
+      const t = await getTemplate(String(json.style));
+      if (!t) return sendJson(res, 400, { error: `unknown style: ${json.style}` });
+      designMd = t.designMd;
+    } else {
+      try {
+        await sandboxManager.ensureCreated();
+        designMd = await sandboxManager.sandbox().readFile('DESIGN.md');
+      } catch { /* 无设计契约 */ }
+    }
     try {
       const result = await generateDrafts({
         drafts: getDrafts(), provider,
@@ -116,6 +123,22 @@ async function route(req, res, ctx) {
       const { meta, html, version } = await getDrafts().readHtml(
         decodeURIComponent(draftGet[1]), v ? Number(v) : null);
       return sendJson(res, 200, { meta, html, version });
+    } catch (e) {
+      return sendJson(res, e.status || 500, { error: e.message });
+    }
+  }
+
+  const draftExport = /^\/api\/draft\/([^/]+)\/export$/.exec(p);
+  if (draftExport && req.method === 'GET') {
+    // 导出 HTML（M4）：最新版本整页下载
+    try {
+      const { meta, html, version } = await getDrafts().readHtml(decodeURIComponent(draftExport[1]));
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Disposition': `attachment; filename="draftly-${meta.id}-v${version}.html"`,
+        'Cache-Control': 'no-store',
+      });
+      return res.end(html);
     } catch (e) {
       return sendJson(res, e.status || 500, { error: e.message });
     }

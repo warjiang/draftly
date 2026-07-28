@@ -137,6 +137,7 @@ async function selectDraft(id, v = null) {
     alert('加载草稿失败：' + e.message);
     return;
   }
+  hideCompare(); // 选用方案/切换草稿后退出对比视图
   $('#stage-empty').hidden = true;
   $('#stage-view').hidden = false;
   $('#stage-title').textContent = current.meta.title;
@@ -199,18 +200,80 @@ $('#gen-form').addEventListener('submit', async (e) => {
   btn.disabled = true;
   btn.textContent = '生成中…';
   try {
+    const style = $('#gen-style').value;
     const { drafts: created } = await api('/api/draft/generate', {
-      body: { prompt, variants: Number($('#gen-variants').value) },
+      body: { prompt, variants: Number($('#gen-variants').value), ...(style ? { style } : {}) },
     });
     $('#gen-input').value = '';
     await loadDrafts();
-    if (created.length) await selectDraft(created[0].id);
+    if (created.length > 1) {
+      await showCompare(created); // 多变体（M4）：并排对比，点击选用
+    } else if (created.length) {
+      await selectDraft(created[0].id);
+    }
   } catch (err) {
     alert('生成失败：' + err.message);
   } finally {
     btn.disabled = false;
     btn.textContent = '生成草稿';
   }
+});
+
+/* ---------- 风格预设（M4）：模板库 designMd 作为设计契约 ---------- */
+async function loadStyles() {
+  try {
+    const { templates } = await api('/api/templates');
+    const sel = $('#gen-style');
+    for (const t of templates) {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = `${t.name}（${(t.tags?.style || []).join('/')}）`;
+      sel.appendChild(opt);
+    }
+  } catch { /* 模板库不可用时仅保留「默认风格」 */ }
+}
+
+/* ---------- 多变体并排对比（M4） ---------- */
+function hideCompare() {
+  $('#compare-view').hidden = true;
+  $('#compare-grid').innerHTML = '';
+}
+
+async function showCompare(created) {
+  const grid = $('#compare-grid');
+  grid.innerHTML = '';
+  $('#stage-empty').hidden = true;
+  $('#stage-view').hidden = true;
+  $('#compare-view').hidden = false;
+  const items = await Promise.all(created.map(async (c, i) => {
+    try {
+      const d = await api(`/api/draft/${encodeURIComponent(c.id)}`);
+      return { ...d, index: i + 1 };
+    } catch { return null; }
+  }));
+  for (const item of items.filter(Boolean)) {
+    const card = document.createElement('div');
+    card.className = 'compare-card';
+    card.innerHTML = `
+      <div class="compare-frame-wrap"><iframe sandbox="allow-same-origin" title="方案 ${item.index}"></iframe></div>
+      <div class="compare-info">
+        <span class="compare-name">方案 ${item.index} · ${escapeHtml(item.meta.title)}</span>
+        <span class="hint">点击选用</span>
+      </div>`;
+    card.querySelector('iframe').srcdoc = item.html;
+    card.addEventListener('click', () => selectDraft(item.meta.id));
+    grid.appendChild(card);
+  }
+}
+
+/* ---------- 导出 HTML（M4） ---------- */
+$('#btn-export').addEventListener('click', () => {
+  if (!current) return;
+  const a = document.createElement('a');
+  a.href = `/api/draft/${encodeURIComponent(current.meta.id)}/export`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 });
 
 /* ---------- 元素局部修改（M3） ---------- */
@@ -276,4 +339,5 @@ $('#source-modal').addEventListener('click', (e) => {
 });
 
 /* ---------- 启动 ---------- */
+loadStyles();
 loadDrafts();

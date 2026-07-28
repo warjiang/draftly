@@ -11,6 +11,9 @@
   <div class="brand">draftly <span class="tag">设计草稿</span></div>
   <form id="gen-form">
     <input id="gen-input" type="text" placeholder="描述你想要的页面，如：做一个深色科技感的 SaaS 定价页" autocomplete="off" />
+    <select id="gen-style" title="风格预设（来自模板库）">
+      <option value="">默认风格</option>
+    </select>
     <select id="gen-variants" title="同时生成的方案数">
       <option value="1">1 个方案</option>
       <option value="2">2 个方案</option>
@@ -34,6 +37,11 @@
   <!-- 中：预览画布 -->
   <section id="stage">
     <div id="stage-empty" class="stage-hint">← 选择左侧草稿查看预览</div>
+    <!-- 多变体并排对比（M4）：生成多个方案时展示，点击卡片选用 -->
+    <div id="compare-view" hidden>
+      <div class="pane-title compare-title">生成完成，点击选用一个方案（其余保留在草稿列表）</div>
+      <div id="compare-grid"></div>
+    </div>
     <div id="stage-view" hidden>
       <div id="stage-bar">
         <div>
@@ -43,6 +51,7 @@
         <div class="stage-actions">
           <button id="btn-pick" class="btn" aria-pressed="false">点选修改</button>
           <button id="btn-source" class="btn">查看源码</button>
+          <button id="btn-export" class="btn">导出 HTML</button>
         </div>
       </div>
       <iframe id="preview" title="draft preview" sandbox="allow-same-origin"></iframe>

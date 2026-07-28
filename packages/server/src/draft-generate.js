@@ -18,7 +18,8 @@ export const MAX_VARIANTS = 3;
 export async function generateDrafts({ drafts, provider, prompt, variants = 1, designMd = null }) {
   const count = Math.min(Math.max(Number.parseInt(variants, 10) || 1, 1), MAX_VARIANTS);
   const messages = buildDraftPrompt({ userPrompt: prompt, designMd });
-  const results = await Promise.all(
+  // allSettled 容错：多变体并发时个别失败（如网关 500）不拖垮整批；全部失败才抛第一个错误
+  const settled = await Promise.allSettled(
     Array.from({ length: count }, async (_, i) => {
       // 变体间拉开 temperature，获得差异化方案（MockProvider 忽略该参数，保持确定性）
       const raw = await provider.complete(messages, { temperature: 0.2 + i * 0.3 });
@@ -28,6 +29,8 @@ export async function generateDrafts({ drafts, provider, prompt, variants = 1, d
       return { id: draft.id, title: meta.title, version: v };
     }),
   );
+  const results = settled.filter((s) => s.status === 'fulfilled').map((s) => s.value);
+  if (!results.length) throw settled[0].reason;
   return { drafts: results };
 }
 

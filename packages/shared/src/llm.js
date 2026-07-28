@@ -456,10 +456,13 @@ export class OpenAICompatibleProvider extends LLMProvider {
 
   async complete(messages, opts = {}) {
     if (!this.baseURL || !this.apiKey) throw new Error('OpenAICompatibleProvider: missing baseURL/apiKey');
+    // max_tokens：推理模型（reasoning_content）会在默认 4k 预算内耗尽 token 导致 content 为空，
+    // 整页 HTML 草稿输出较长，默认给 32k，可用 DRAFTLY_LLM_MAX_TOKENS / opts.maxTokens 覆盖
+    const maxTokens = opts.maxTokens ?? (Number(process.env.DRAFTLY_LLM_MAX_TOKENS) || 32768);
     const res = await fetch(`${this.baseURL}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, temperature: opts.temperature ?? 0.2 }),
+      body: JSON.stringify({ model: this.model, messages, temperature: opts.temperature ?? 0.2, max_tokens: maxTokens }),
     });
     if (!res.ok) throw new Error(`LLM request failed: ${res.status} ${await res.text()}`);
     const data = await res.json();

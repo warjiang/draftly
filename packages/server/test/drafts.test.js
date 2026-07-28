@@ -341,3 +341,71 @@ test('HTTP：/api/draft/generate → /api/drafts → /api/draft/:id', async () =
     await new Promise((r) => server.close(r));
   }
 });
+
+/* ---------- M4：风格预设 + 导出 ---------- */
+
+test('HTTP M4：style 预设注入设计契约；unknown style 400；export 下载/404', async () => {
+  const mgr = new SandboxManager({ rootDir: path.join(tmp, 'sandbox-m4') });
+  const drafts = new DraftStore({ rootDir: path.join(tmp, 'api-drafts-m4') });
+  const server = createApiServer({ sandboxManager: mgr, provider: new MockProvider(), drafts });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = async (p, body) => {
+    const res = await fetch(base + p, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    return { status: res.status, data: await res.json().catch(() => null) };
+  };
+  try {
+    // 模板列表驱动前端风格下拉
+    const tplRes = await fetch(`${base}/api/templates`);
+    assert.equal(tplRes.status, 200);
+    const { templates } = await tplRes.json();
+    assert.ok(templates.length > 0);
+    assert.ok(templates.every((t) => t.id && t.name));
+
+    // unknown style → 400
+    const badStyle = await post('/api/draft/generate', { prompt: '做一个定价页', style: 'no-such-style' });
+    assert.equal(badStyle.status, 400);
+    assert.match(badStyle.data.error, /unknown style/);
+
+    // 合法 style（取模板库第一个）→ 200，正常落盘
+    const ok = await post('/api/draft/generate', { prompt: '做一个定价页', style: templates[0].id, variants: 2 });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.data.drafts.length, 2);
+
+    // export：最新版本整页下载
+    const id = ok.data.drafts[0].id;
+    const exp = await fetch(`${base}/api/draft/${id}/export`);
+    assert.equal(exp.status, 200);
+    assert.match(exp.headers.get('content-type'), /text\/html/);
+    assert.match(exp.headers.get('content-disposition'), new RegExp(`attachment; filename="draftly-${id}-v1\\.html"`));
+    const html = await exp.text();
+    assert.match(html, /<!doctype html>/i);
+    assert.match(html, /data-did=/);
+
+    // export 不存在的草稿 → 404
+    const missing = await fetch(`${base}/api/draft/no-such-id/export`);
+    assert.equal(missing.status, 404);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('generateDrafts M4：多变体部分失败容错（allSettled）；全部失败抛第一个错误', async () => {
+  const mock = new MockProvider();
+  let n = 0;
+  const flaky = {
+    complete: (messages, opts) => (++n === 2 ? Promise.reject(new Error('gateway 500')) : mock.complete(messages, opts)),
+  };
+  const store = new DraftStore({ rootDir: path.join(tmp, 'partial-ok') });
+  const r = await generateDrafts({ drafts: store, provider: flaky, prompt: '做一个落地页', variants: 3 });
+  assert.equal(r.drafts.length, 2); // 3 个里失败 1 个，成功 2 个
+
+  const alwaysFail = { complete: () => Promise.reject(new Error('always down')) };
+  const store2 = new DraftStore({ rootDir: path.join(tmp, 'partial-fail') });
+  await assert.rejects(
+    () => generateDrafts({ drafts: store2, provider: alwaysFail, prompt: 'x', variants: 2 }),
+    /always down/,
+  );
+});
