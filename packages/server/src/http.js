@@ -29,7 +29,7 @@ import { editElement } from './nl-edit.js';
 import { extractDesign, fetchSiteAssets } from './extract.js';
 import { loadTemplates, templateSummary, getTemplate, applyTemplate } from './templates.js';
 import { DraftStore } from './drafts.js';
-import { generateDrafts, iterateDraft } from './draft-generate.js';
+import { generateDrafts, iterateDraft, editDraftElement } from './draft-generate.js';
 
 const EDITOR_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../editor/public');
 const APP_FILE = 'src/App.jsx';
@@ -128,6 +128,22 @@ async function route(req, res, ctx) {
     try {
       const result = await iterateDraft({
         drafts: getDrafts(), provider, id, instruction: json.instruction,
+      });
+      return sendJson(res, 200, result);
+    } catch (e) {
+      return sendJson(res, e.status || 502, { error: e.message });
+    }
+  }
+
+  const draftEditElement = /^\/api\/draft\/([^/]+)\/edit-element$/.exec(p);
+  if (draftEditElement && req.method === 'POST') {
+    const { did, instruction } = json || {};
+    if (did === undefined || did === null || did === '') return sendJson(res, 400, { error: 'did required' });
+    if (!instruction) return sendJson(res, 400, { error: 'instruction required' });
+    const id = decodeURIComponent(draftEditElement[1]);
+    try {
+      const result = await editDraftElement({
+        drafts: getDrafts(), provider, id, did, instruction,
       });
       return sendJson(res, 200, result);
     } catch (e) {

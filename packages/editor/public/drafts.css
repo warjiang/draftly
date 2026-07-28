@@ -121,13 +121,22 @@ body {
 }
 
 /* ---------- 迭代 & 版本 ---------- */
-#iterate-form { display: flex; flex-direction: column; gap: 8px; }
-#iterate-input {
+#iterate-form, #element-form { display: flex; flex-direction: column; gap: 8px; }
+#iterate-input, #element-input {
   width: 100%; padding: 8px 10px; font-size: 13px;
   border: 1px solid var(--border); border-radius: var(--radius);
   resize: vertical; font-family: inherit;
 }
-#iterate-input:focus { outline: none; border-color: var(--primary); }
+#iterate-input:focus, #element-input:focus { outline: none; border-color: var(--primary); }
+
+/* ---------- 选中元素（M3） ---------- */
+#btn-pick.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+#selected-summary {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 10px; font-size: 12px; font-weight: 600;
+  background: #f0f3f7; margin-bottom: 8px; word-break: break-all;
+}
+.selected-text { font-weight: 400; margin-top: 4px; }
 
 #version-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .version-item {

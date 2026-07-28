@@ -3,7 +3,7 @@
  * 模型角色 = 资深 UI 设计师；产物 = 单文件 HTML（内联 <style>，无外链 JS）。
  * DRAFT_PROMPT_MARKER 由 @draftly/shared 定义，MockProvider 依此返回确定性 HTML（离线可测）。
  */
-import { DRAFT_PROMPT_MARKER, ITERATE_PROMPT_MARKER } from '../../shared/src/llm.js';
+import { DRAFT_PROMPT_MARKER, ITERATE_PROMPT_MARKER, EDIT_ELEMENT_PROMPT_MARKER } from '../../shared/src/llm.js';
 
 export { DRAFT_PROMPT_MARKER };
 
@@ -53,5 +53,26 @@ export function buildIteratePrompt({ currentHtml, instruction }) {
   return [
     { role: 'system', content: system.join('\n') },
     { role: 'user', content: `当前 HTML：\n${currentHtml}\n\n修改指令：${instruction}` },
+  ];
+}
+
+/**
+ * @param {{ elementHtml: string, instruction: string }} opts
+ * @returns {Array<{ role: string, content: string }>} messages
+ */
+export function buildEditElementPrompt({ elementHtml, instruction }) {
+  const system = [
+    `你正在「${EDIT_ELEMENT_PROMPT_MARKER}」下工作。`,
+    '用户会给出一个 HTML 元素（含 data-did 定位属性）和一条修改指令。',
+    '只输出修改后的该元素完整 HTML（outerHTML），不要 Markdown 围栏，不要任何解释文字。',
+    '',
+    '硬性要求：',
+    '1. 必须保留根元素的 data-did 属性及其原值，禁止改动。',
+    '2. 样式改动优先使用内联 style；文案用同语种真实感示例。',
+    '3. 只修改该元素及其子节点，不要输出元素之外的任何内容。',
+  ];
+  return [
+    { role: 'system', content: system.join('\n') },
+    { role: 'user', content: `目标元素：\n${elementHtml}\n\n修改指令：${instruction}` },
   ];
 }

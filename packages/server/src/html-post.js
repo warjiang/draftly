@@ -39,21 +39,34 @@ const SKIP_TAGS = new Set([
   'br', 'hr', 'img', 'input', 'wbr', 'source', 'track', 'area', 'col', 'embed',
 ]);
 
-/** 给 <body> 内所有可见元素注入自增 data-did；幂等（已有 data-did 的元素不重复注入） */
-export function injectDataIds(html) {
-  const bodyStart = /<body[\s>]/i.exec(html);
-  if (!bodyStart) return html;
-  const headEnd = bodyStart.index + bodyStart[0].length;
-  const head = html.slice(0, headEnd);
-  const body = html.slice(headEnd);
-  let did = 0;
-  const tagged = body.replace(/<([a-zA-Z][\w-]*)((?:(?!>)[\s\S])*?)(\/?)>/g,
+/** 标签注入实现：对 text 内所有可见标签注入自增 data-did（幂等） */
+function tagWithDataIds(text, startFrom) {
+  let did = startFrom;
+  const tagged = text.replace(/<([a-zA-Z][\w-]*)((?:(?!>)[\s\S])*?)(\/?)>/g,
     (match, tag, attrs, selfClose) => {
       if (SKIP_TAGS.has(tag.toLowerCase()) || /\bdata-did\s*=/.test(attrs)) return match;
       did += 1;
       return `<${tag}${attrs} data-did="${did}"${selfClose}>`;
     });
-  return head + tagged;
+  return tagged;
+}
+
+/** 给 <body> 内所有可见元素注入自增 data-did；幂等（已有 data-did 的元素不重复注入） */
+export function injectDataIds(html, startFrom = 0) {
+  const bodyStart = /<body[\s>]/i.exec(html);
+  if (!bodyStart) return html;
+  const headEnd = bodyStart.index + bodyStart[0].length;
+  const head = html.slice(0, headEnd);
+  const body = html.slice(headEnd);
+  return head + tagWithDataIds(body, startFrom);
+}
+
+/**
+ * 给元素片段（无 <body> 的 outerHTML）注入 data-did（M3）。
+ * startFrom 传文档当前最大 did，片段内新元素从 startFrom+1 开始，避免与既有元素冲突。
+ */
+export function injectFragmentDataIds(fragment, startFrom = 0) {
+  return tagWithDataIds(fragment, startFrom);
 }
 
 /** 完整后处理管线：模型原始输出 → 可预览 HTML */

@@ -11,7 +11,12 @@ import { defaultDesignMd } from '../../shared/src/design-md.js';
 import { DraftStore } from '../src/drafts.js';
 import { extractHtml, sanitizeHtml, injectDataIds, postProcessHtml } from '../src/html-post.js';
 import { buildDraftPrompt } from '../src/draft-prompts.js';
-import { generateDrafts, iterateDraft } from '../src/draft-generate.js';
+import { generateDrafts, iterateDraft, editDraftElement } from '../src/draft-generate.js';
+import {
+  findElementRange, extractElementHtml, replaceElementHtml,
+  maxDataDid, ensureRootDid, extractElementFragment,
+} from '../src/html-edit.js';
+import { buildEditElementPrompt } from '../src/draft-prompts.js';
 import { SandboxManager } from '../src/sandbox-manager.js';
 import { createApiServer } from '../src/http.js';
 
@@ -181,6 +186,83 @@ test('rollbackVersion：删除目标版本之后的文件并截断历史', async
   await assert.rejects(() => store.rollbackVersion(meta.id, 9), /draft not found/);
 });
 
+/* ---------- html-edit（M3） ---------- */
+
+test('findElementRange：定位 / 嵌套同名标签 / 找不到', () => {
+  const html = '<!doctype html><html><body>'
+    + '<div data-did="1"><div data-did="2"><div>inner</div></div><span data-did="3">s</span></div>'
+    + '<button data-did="4">b</button></body></html>';
+  const r2 = findElementRange(html, 2);
+  assert.equal(html.slice(r2.start, r2.end), '<div data-did="2"><div>inner</div></div>');
+  const r1 = findElementRange(html, 1);
+  assert.ok(html.slice(r1.start, r1.end).includes('<span data-did="3">s</span>')); // 外层含全部子树
+  assert.equal(findElementRange(html, 99), null);
+});
+
+test('extract / replace / maxDataDid / ensureRootDid / extractElementFragment', () => {
+  const html = '<body><p data-did="1">a</p><p data-did="2">b</p></body>';
+  assert.equal(extractElementHtml(html, 1), '<p data-did="1">a</p>');
+  assert.equal(
+    replaceElementHtml(html, 1, '<p data-did="1">A</p>'),
+    '<body><p data-did="1">A</p><p data-did="2">b</p></body>',
+  );
+  assert.equal(replaceElementHtml(html, 9, '<p>x</p>'), null);
+  assert.equal(maxDataDid(html), 2);
+  assert.equal(maxDataDid('<p>none</p>'), 0);
+  // ensureRootDid：缺失补回 / 已有不动 / 自闭合
+  assert.equal(ensureRootDid('<button class="x">b</button>', 7), '<button class="x" data-did="7">b</button>');
+  assert.equal(ensureRootDid('<button data-did="3">b</button>', 7), '<button data-did="3">b</button>');
+  // extractElementFragment：围栏与杂谈容错
+  assert.equal(
+    extractElementFragment('好的\n```html\n<div>x</div>\n```\n完毕'),
+    '<div>x</div>',
+  );
+  assert.throws(() => extractElementFragment('没有标签'), /未找到元素/);
+});
+
+test('buildEditElementPrompt：含标记、元素与指令', () => {
+  const msgs = buildEditElementPrompt({ elementHtml: '<button data-did="3">b</button>', instruction: '换成描边样式' });
+  assert.equal(msgs[0].role, 'system');
+  assert.match(msgs[0].content, /元素局部编辑模式/);
+  assert.match(msgs[0].content, /data-did/);
+  assert.match(msgs[1].content, /<button data-did="3">/);
+  assert.match(msgs[1].content, /换成描边样式/);
+});
+
+test('MockProvider 元素编辑：描边指令 → 根标签注入内联样式且保留 data-did', async () => {
+  const provider = new MockProvider();
+  const msgs = buildEditElementPrompt({ elementHtml: '<button data-did="3" class="btn">b</button>', instruction: '换成描边样式' });
+  const out = await provider.complete(msgs);
+  assert.match(out, /data-did="3"/);
+  assert.match(out, /border: 2px solid/);
+  assert.equal(await provider.complete(msgs), out); // 确定性
+});
+
+test('editDraftElement：局部替换存新版本，根 did 保留、新元素 did 不冲突', async () => {
+  const store = new DraftStore({ rootDir: path.join(tmp, 'edit-element-drafts') });
+  const { drafts: created } = await generateDrafts({
+    drafts: store, provider: new MockProvider(), prompt: '做一个落地页', variants: 1,
+  });
+  const id = created[0].id;
+  const { html: v1html } = await store.readHtml(id);
+  const did = /data-did="(\d+)"/.exec(v1html)[1];
+  const r = await editDraftElement({
+    drafts: store, provider: new MockProvider(), id, did, instruction: '换成描边样式',
+  });
+  assert.equal(r.version, 2);
+  const { html, meta } = await store.readHtml(id);
+  assert.match(html, /border: 2px solid/);
+  assert.equal(meta.versions[1].kind, 'edit-element');
+  assert.equal(meta.versions[1].instruction, '换成描边样式');
+  // did 唯一性：替换后全文 data-did 无重复
+  const dids = [...html.matchAll(/data-did="(\d+)"/g)].map((m) => m[1]);
+  assert.equal(new Set(dids).size, dids.length);
+  await assert.rejects(
+    () => editDraftElement({ drafts: store, provider: new MockProvider(), id, did: 999, instruction: 'x' }),
+    /element not found/,
+  );
+});
+
 /* ---------- HTTP API 集成 ---------- */
 
 test('HTTP：/api/draft/generate → /api/drafts → /api/draft/:id', async () => {
@@ -238,6 +320,23 @@ test('HTTP：/api/draft/generate → /api/drafts → /api/draft/:id', async () =
     const afterRollback = await call(`/api/draft/${id}`);
     assert.equal(afterRollback.data.version, 1);
     assert.equal(afterRollback.data.meta.versions.length, 1);
+
+    // M3：edit-element
+    const eeBad1 = await call(`/api/draft/${id}/edit-element`, 'POST', { instruction: 'x' });
+    assert.equal(eeBad1.status, 400);
+    const eeBad2 = await call(`/api/draft/${id}/edit-element`, 'POST', { did: 1 });
+    assert.equal(eeBad2.status, 400);
+    const ee404 = await call(`/api/draft/${id}/edit-element`, 'POST', { did: 999, instruction: 'x' });
+    assert.equal(ee404.status, 404);
+
+    const oneMore = await call(`/api/draft/${id}`);
+    const did = /data-did="(\d+)"/.exec(oneMore.data.html)[1];
+    const ee = await call(`/api/draft/${id}/edit-element`, 'POST', { did, instruction: '换成描边样式' });
+    assert.equal(ee.status, 200);
+    assert.equal(ee.data.version, 2);
+    const afterEe = await call(`/api/draft/${id}`);
+    assert.equal(afterEe.data.version, 2);
+    assert.match(afterEe.data.html, /border: 2px solid/);
   } finally {
     await new Promise((r) => server.close(r));
   }

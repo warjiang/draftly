@@ -41,6 +41,7 @@
           <div id="stage-meta" class="hint"></div>
         </div>
         <div class="stage-actions">
+          <button id="btn-pick" class="btn" aria-pressed="false">点选修改</button>
           <button id="btn-source" class="btn">查看源码</button>
         </div>
       </div>
@@ -48,9 +49,18 @@
     </div>
   </section>
 
-  <!-- 右：对话迭代 + 版本历史 -->
+  <!-- 右：选中元素 + 对话迭代 + 版本历史 -->
   <aside id="rightbar">
-    <div class="pane-title">迭代</div>
+    <div class="pane-title">选中元素</div>
+    <p id="selected-empty" class="hint">未选中。开启「点选修改」后在预览中点击元素。</p>
+    <div id="selected-info" hidden>
+      <div id="selected-summary"></div>
+      <form id="element-form">
+        <textarea id="element-input" rows="2" placeholder="对选中元素的指令，如：换成描边样式"></textarea>
+        <button type="submit" class="btn primary" id="element-btn">修改选中元素</button>
+      </form>
+    </div>
+    <div class="pane-title" style="margin-top:16px">整页迭代</div>
     <form id="iterate-form">
       <textarea id="iterate-input" rows="3" placeholder="输入修改指令，如：导航栏改成毛玻璃"></textarea>
       <button type="submit" class="btn primary" id="iterate-btn">迭代当前草稿</button>

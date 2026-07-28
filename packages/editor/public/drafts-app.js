@@ -8,6 +8,85 @@ const preview = $('#preview');
 
 let drafts = [];      // meta 列表
 let current = null;   // { meta, html, version }
+let pickMode = false; // 点选修改开关（M3）
+let selected = null;  // { did, tagName, textContent }
+
+/* ---------- 点选修改（M3，父侧直挂 contentDocument，无需向 iframe 注入脚本） ---------- */
+const HOVER_OUTLINE = '2px dashed rgba(59, 130, 246, .7)';
+const SELECT_OUTLINE = '2px solid #3b82f6';
+let hoverEl = null;
+
+function clearHover() {
+  if (hoverEl) { hoverEl.style.outline = hoverEl.dataset.draftlyPrevOutline || ''; delete hoverEl.dataset.draftlyPrevOutline; }
+  hoverEl = null;
+}
+
+function clearSelectedStyle() {
+  const doc = preview.contentDocument;
+  if (!doc) return;
+  const prev = doc.querySelector('[data-draftly-selected]');
+  if (prev) { prev.style.outline = prev.dataset.draftlyPrevOutline || ''; delete prev.dataset.draftlyPrevOutline; delete prev.dataset.draftlySelected; }
+}
+
+function setSelected(el) {
+  clearSelectedStyle();
+  clearHover();
+  if (!el) { selected = null; renderSelected(); return; }
+  el.dataset.draftlyPrevOutline = el.style.outline || '';
+  el.dataset.draftlySelected = '1';
+  el.style.outline = SELECT_OUTLINE;
+  selected = {
+    did: el.getAttribute('data-did'),
+    tagName: el.tagName.toLowerCase(),
+    textContent: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60),
+  };
+  renderSelected();
+}
+
+function renderSelected() {
+  $('#selected-empty').hidden = !!selected;
+  $('#selected-info').hidden = !selected;
+  if (selected) {
+    $('#selected-summary').innerHTML =
+      `&lt;${escapeHtml(selected.tagName)}&gt; <span class="hint">data-did=${escapeHtml(selected.did)}</span>` +
+      (selected.textContent ? `<div class="hint selected-text">${escapeHtml(selected.textContent)}</div>` : '');
+  }
+}
+
+function bindPickHandlers() {
+  const doc = preview.contentDocument;
+  if (!doc) return;
+  doc.addEventListener('mouseover', (e) => {
+    if (!pickMode) return;
+    const el = e.target instanceof Element ? e.target.closest('[data-did]') : null;
+    if (el === hoverEl) return;
+    clearHover();
+    if (el && !el.dataset.draftlySelected) {
+      el.dataset.draftlyPrevOutline = el.style.outline || '';
+      el.style.outline = HOVER_OUTLINE;
+      hoverEl = el;
+    }
+  }, true);
+  doc.addEventListener('click', (e) => {
+    if (!pickMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.target instanceof Element ? e.target.closest('[data-did]') : null;
+    setSelected(el);
+  }, true);
+}
+
+function setPickMode(on) {
+  pickMode = on;
+  $('#btn-pick').classList.toggle('active', on);
+  $('#btn-pick').setAttribute('aria-pressed', String(on));
+  if (!on) { clearHover(); clearSelectedStyle(); setSelected(null); }
+}
+
+$('#btn-pick').addEventListener('click', () => setPickMode(!pickMode));
+
+// srcdoc 每次加载后 document 重建，需要重新挂监听
+preview.addEventListener('load', bindPickHandlers);
 
 async function api(p, opts = {}) {
   const res = await fetch(p, opts.body !== undefined ? {
@@ -62,6 +141,7 @@ async function selectDraft(id, v = null) {
   $('#stage-view').hidden = false;
   $('#stage-title').textContent = current.meta.title;
   $('#stage-meta').textContent = `${current.meta.prompt} · v${current.version}`;
+  setSelected(null); // 换草稿/版本后原选中元素已失效
   preview.srcdoc = current.html;
   renderList();
   renderVersions();
@@ -130,6 +210,31 @@ $('#gen-form').addEventListener('submit', async (e) => {
   } finally {
     btn.disabled = false;
     btn.textContent = '生成草稿';
+  }
+});
+
+/* ---------- 元素局部修改（M3） ---------- */
+$('#element-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!current || !selected) return;
+  const instruction = $('#element-input').value.trim();
+  if (!instruction) return;
+  const btn = $('#element-btn');
+  btn.disabled = true;
+  btn.textContent = '修改中…';
+  try {
+    await api(`/api/draft/${encodeURIComponent(current.meta.id)}/edit-element`, {
+      body: { did: selected.did, instruction },
+    });
+    $('#element-input').value = '';
+    setSelected(null);
+    await loadDrafts();
+    await selectDraft(current.meta.id);
+  } catch (err) {
+    alert('修改失败：' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '修改选中元素';
   }
 });
 

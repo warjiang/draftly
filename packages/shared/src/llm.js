@@ -175,6 +175,9 @@ export const DRAFT_PROMPT_MARKER = 'HTML 草稿模式';
 /** HTML 草稿迭代模式的 system prompt 标记（server draft-prompts.js buildIteratePrompt 注入，M2） */
 export const ITERATE_PROMPT_MARKER = 'HTML 草稿迭代模式';
 
+/** HTML 元素局部编辑模式的 system prompt 标记（server draft-prompts.js buildEditElementPrompt 注入，M3） */
+export const EDIT_ELEMENT_PROMPT_MARKER = '元素局部编辑模式';
+
 /** 编辑模式确定性输出：匹配所有规则，合并 class token，输出 ```json 围栏 */
 function mockEdit(messages) {
   const instruction = messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
@@ -335,6 +338,39 @@ function mockHtmlDraft(text) {
   return primary ? page.split(MOCK_HTML_BRAND).join(primary) : page;
 }
 
+/** 向元素根标签注入/合并内联 style（M3 Mock 用） */
+function injectRootStyle(el, rule) {
+  const m = /<([a-zA-Z][\w-]*)(\s[^>]*)?>/.exec(el);
+  if (!m) return el;
+  const tag = m[0];
+  const styleM = /\bstyle\s*=\s*"([^"]*)"/.exec(tag);
+  let next;
+  if (styleM) {
+    next = tag.replace(styleM[0], `style="${styleM[1].replace(/;?\s*$/, '')}; ${rule}"`);
+  } else if (/\/\s*>$/.test(tag)) {
+    next = tag.replace(/\/\s*>$/, ` style="${rule}"/>`);
+  } else {
+    next = tag.replace(/>$/, ` style="${rule}">`);
+  }
+  return el.slice(0, m.index) + next + el.slice(m.index + tag.length);
+}
+
+/** 元素局部编辑模式确定性输出：按指令关键词给目标元素根标签注入内联样式（M3） */
+function mockHtmlElementEdit(text) {
+  const m = /目标元素：\n([\s\S]+?)\n\n修改指令：/.exec(text);
+  let el = (m ? m[1].trim() : '') || '<div data-did="0">元素</div>';
+  const instruction = text.split('修改指令：').pop() || '';
+  // 兜底可见变化；关键词命中时换成对应规则
+  let rule = 'box-shadow: 0 4px 16px rgba(59, 130, 246, .35)';
+  if (/描边|边框|outline/i.test(instruction)) rule = 'border: 2px solid #3b82f6; background: transparent; color: #3b82f6';
+  else if (/背景.{0,4}红|红.{0,4}背景/.test(instruction)) rule = 'background: #dc2626; color: #fff';
+  else if (/红/.test(instruction)) rule = 'color: #dc2626';
+  else if (/圆角|圆形|胶囊/.test(instruction)) rule = 'border-radius: 999px';
+  else if (/字体调大|字号调大|放大/.test(instruction)) rule = 'font-size: 24px';
+  else if (/毛玻璃|磨砂/.test(instruction)) rule = 'backdrop-filter: blur(12px); background: rgba(255, 255, 255, .6)';
+  return injectRootStyle(el, rule);
+}
+
 /** 迭代模式确定性输出：根据指令关键词在当前 HTML 上做小修改（M2） */
 function mockHtmlIterate(text) {
   // 从 prompt 中把当前 HTML 抠出来：buildIteratePrompt 格式为 "当前 HTML：\n...\n\n修改指令：..."
@@ -393,6 +429,8 @@ export class MockProvider extends LLMProvider {
     const text = messages.map((m) => m.content).join('\n');
     // 编辑模式优先于页面模板路由（元素代码可能含「登录」等关键词）
     if (text.includes(EDIT_PROMPT_MARKER)) return mockEdit(messages);
+    // HTML 元素局部编辑模式（M3）：元素 outerHTML + 指令 → 替换后元素
+    if (text.includes(EDIT_ELEMENT_PROMPT_MARKER)) return mockHtmlElementEdit(text);
     // HTML 草稿迭代模式（M2）：基于当前 HTML + 指令做确定性小修改
     if (text.includes(ITERATE_PROMPT_MARKER)) return mockHtmlIterate(text);
     // HTML 草稿模式（M1）：返回整页 HTML 而非 JSX
