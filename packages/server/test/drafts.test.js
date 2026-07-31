@@ -11,13 +11,12 @@ import { defaultDesignMd } from '../../shared/src/design-md.js';
 import { DraftStore } from '../src/drafts.js';
 import { extractHtml, sanitizeHtml, injectDataIds, postProcessHtml } from '../src/html-post.js';
 import { buildDraftPrompt } from '../src/draft-prompts.js';
-import { generateDrafts, iterateDraft, editDraftElement } from '../src/draft-generate.js';
+import { generateDrafts, iterateDraft, editDraftElement, editDraftByImage } from '../src/draft-generate.js';
 import {
   findElementRange, extractElementHtml, replaceElementHtml,
   maxDataDid, ensureRootDid, extractElementFragment,
 } from '../src/html-edit.js';
 import { buildEditElementPrompt } from '../src/draft-prompts.js';
-import { SandboxManager } from '../src/sandbox-manager.js';
 import { createApiServer } from '../src/http.js';
 
 let tmp;
@@ -266,9 +265,8 @@ test('editDraftElement：局部替换存新版本，根 did 保留、新元素 d
 /* ---------- HTTP API 集成 ---------- */
 
 test('HTTP：/api/draft/generate → /api/drafts → /api/draft/:id', async () => {
-  const mgr = new SandboxManager({ rootDir: path.join(tmp, 'sandbox') });
   const drafts = new DraftStore({ rootDir: path.join(tmp, 'api-drafts') });
-  const server = createApiServer({ sandboxManager: mgr, provider: new MockProvider(), drafts });
+  const server = createApiServer({ provider: new MockProvider(), drafts });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   const call = async (p, method, body) => {
@@ -345,9 +343,8 @@ test('HTTP：/api/draft/generate → /api/drafts → /api/draft/:id', async () =
 /* ---------- M4：风格预设 + 导出 ---------- */
 
 test('HTTP M4：style 预设注入设计契约；unknown style 400；export 下载/404', async () => {
-  const mgr = new SandboxManager({ rootDir: path.join(tmp, 'sandbox-m4') });
   const drafts = new DraftStore({ rootDir: path.join(tmp, 'api-drafts-m4') });
-  const server = createApiServer({ sandboxManager: mgr, provider: new MockProvider(), drafts });
+  const server = createApiServer({ provider: new MockProvider(), drafts });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = async (p, body) => {
@@ -408,4 +405,61 @@ test('generateDrafts M4：多变体部分失败容错（allSettled）；全部�
     () => generateDrafts({ drafts: store2, provider: alwaysFail, prompt: 'x', variants: 2 }),
     /always down/,
   );
+});
+
+/* ---------- 截图修改（M5） ---------- */
+
+test('editDraftByImage：截图修改存新版本，kind=edit-by-image', async () => {
+  const store = new DraftStore({ rootDir: path.join(tmp, 'edit-by-image-drafts') });
+  const { drafts: created } = await generateDrafts({
+    drafts: store, provider: new MockProvider(), prompt: '做一个落地页', variants: 1,
+  });
+  const id = created[0].id;
+  const r = await editDraftByImage({
+    drafts: store, provider: new MockProvider(), id,
+    image: 'data:image/png;base64,iVBORw0KGgo=',
+    instruction: '改成深色模式',
+  });
+  assert.equal(r.version, 2);
+  const { html, meta } = await store.readHtml(id);
+  assert.match(html, /m-img-edit/);
+  assert.equal(meta.versions[1].kind, 'edit-by-image');
+  assert.equal(meta.versions[1].instruction, '改成深色模式');
+  await assert.rejects(
+    () => editDraftByImage({ drafts: store, provider: new MockProvider(), id, image: '', instruction: 'x' }),
+    /image required/,
+  );
+});
+
+test('HTTP M5：/api/draft/:id/edit-by-image 截图修改 -> 新版本；缺图/缺指令 400', async () => {
+  const drafts = new DraftStore({ rootDir: path.join(tmp, 'api-img-drafts') });
+  const server = createApiServer({ provider: new MockProvider(), drafts });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = async (p, body) => {
+    const res = await fetch(base + p, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    return { status: res.status, data: await res.json().catch(() => null) };
+  };
+  try {
+    const gen = await post('/api/draft/generate', { prompt: '做一个落地页', variants: 1 });
+    const id = gen.data.drafts[0].id;
+
+    const bad1 = await post(`/api/draft/${id}/edit-by-image`, { instruction: 'x' });
+    assert.equal(bad1.status, 400);
+    const bad2 = await post(`/api/draft/${id}/edit-by-image`, { image: 'data:image/png;base64,xx' });
+    assert.equal(bad2.status, 400);
+
+    const r = await post(`/api/draft/${id}/edit-by-image`, {
+      image: 'data:image/png;base64,iVBORw0KGgo=',
+      instruction: '改成深色模式',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.version, 2);
+    const after = await fetch(`${base}/api/draft/${id}`).then((x) => x.json());
+    assert.match(after.html, /m-img-edit/);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
 });

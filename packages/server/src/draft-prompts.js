@@ -3,7 +3,7 @@
  * 模型角色 = 资深 UI 设计师；产物 = 单文件 HTML（内联 <style>，无外链 JS）。
  * DRAFT_PROMPT_MARKER 由 @draftly/shared 定义，MockProvider 依此返回确定性 HTML（离线可测）。
  */
-import { DRAFT_PROMPT_MARKER, ITERATE_PROMPT_MARKER, EDIT_ELEMENT_PROMPT_MARKER } from '../../shared/src/llm.js';
+import { DRAFT_PROMPT_MARKER, ITERATE_PROMPT_MARKER, EDIT_ELEMENT_PROMPT_MARKER, EDIT_BY_IMAGE_PROMPT_MARKER } from '../../shared/src/llm.js';
 
 export { DRAFT_PROMPT_MARKER };
 
@@ -74,5 +74,29 @@ export function buildEditElementPrompt({ elementHtml, instruction }) {
   return [
     { role: 'system', content: system.join('\n') },
     { role: 'user', content: `目标元素：\n${elementHtml}\n\n修改指令：${instruction}` },
+  ];
+}
+
+/**
+ * 截图修改（M5）：当前 HTML + 参考截图 + 指令 -> 修改后整页 HTML。
+ * user 消息为多模态（文本 + image_url），真实 LLM 看图；MockProvider 只取文本部分。
+ * @param {{ currentHtml: string, instruction: string, image: string }} opts
+ * @returns {Array<{ role: string, content: string | Array }>} messages
+ */
+export function buildEditByImagePrompt({ currentHtml, instruction, image }) {
+  const system = [
+    `你正在「${EDIT_BY_IMAGE_PROMPT_MARKER}」下工作。`,
+    '用户会给出当前 HTML 草稿、一张参考截图和一条修改指令。',
+    '请结合截图所示的视觉目标与文字指令，输出修改后的完整 HTML 文档（以 <!doctype html> 开头）。',
+    '不要 Markdown 围栏，不要解释。保持原有结构与 data-did 属性不变，只做必要改动。',
+    '所有样式继续内联在 <head> 中，禁止外链 JS/CSS。',
+  ];
+  const text = `当前 HTML：\n${currentHtml}\n\n修改指令：${instruction}\n\n参考截图：见下方图片`;
+  return [
+    { role: 'system', content: system.join('\n') },
+    { role: 'user', content: [
+      { type: 'text', text },
+      { type: 'image_url', image_url: { url: image } },
+    ] },
   ];
 }

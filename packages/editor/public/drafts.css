@@ -66,8 +66,7 @@ body {
 .nav-links a { font-size: 13px; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .nav-links a:hover { color: var(--primary); }
 
-/* ---------- 布局 ---------- */
-#layout { flex: 1; display: flex; min-height: 0; }
+/* ---------- 布局 ---------- */#layout { flex: 1; display: flex; min-height: 0; }
 
 #sidebar {
   width: 260px; flex-shrink: 0;
@@ -158,6 +157,23 @@ body {
   resize: vertical; font-family: inherit;
 }
 #iterate-input:focus, #element-input:focus { outline: none; border-color: var(--primary); }
+
+/* ---------- 截图修改（M5） ---------- */
+#image-form { display: flex; flex-direction: column; gap: 8px; }
+#image-input {
+  width: 100%; padding: 8px 10px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  resize: vertical; font-family: inherit;
+}
+#image-input:focus { outline: none; border-color: var(--primary); }
+.image-drop {
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 14px; text-align: center; cursor: pointer;
+  background: var(--bg); transition: border-color .15s, background .15s;
+  margin-bottom: 8px;
+}
+.image-drop:hover, .image-drop:focus { border-color: var(--primary); background: #f0f3f7; outline: none; }
+#image-preview { max-width: 100%; max-height: 180px; border-radius: 6px; display: block; margin: 0 auto; }
 
 /* ---------- 选中元素（M3） ---------- */
 #btn-pick.active { background: var(--primary); border-color: var(--primary); color: #fff; }

@@ -80,24 +80,3 @@ export async function getTemplate(id, dir = TEMPLATES_DIR) {
   const all = await loadTemplates(dir);
   return all.find((t) => t.id === id) || null;
 }
-
-/**
- * 应用模板：DESIGN.md 写入 sandbox（history 快照，可 undo）；
- * regenerate=true 时按新设计系统重新生成页面。
- * @param {{ history: object, sandbox: object, provider?: object, id: string, regenerate?: boolean, prompt?: string, dir?: string }} opts
- */
-export async function applyTemplate({ history, sandbox, provider, id, regenerate = false, prompt, dir } = {}) {
-  const t = await getTemplate(id, dir);
-  if (!t) { const e = new Error(`unknown template: ${id}`); e.status = 404; throw e; }
-  await history.write('DESIGN.md', t.designMd);
-  const result = { ok: true, id: t.id, name: t.name, applied: 'DESIGN.md' };
-  if (regenerate) {
-    if (!provider) { const e = new Error('regenerate requires provider'); e.status = 400; throw e; }
-    const { generatePage } = await import('./generate.js');
-    const before = await history.current('src/App.jsx');
-    const gen = await generatePage({ sandbox, provider, userPrompt: prompt || '按照当前设计系统生成一个落地页' });
-    history.pushEntry(gen.file, before, gen.code);
-    result.regenerated = gen.file;
-  }
-  return result;
-}

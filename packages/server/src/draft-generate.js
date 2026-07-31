@@ -2,7 +2,7 @@
  * draft-generate.js — HTML 草稿生成管线（M1）
  * prompt → LLM（可并行多变体）→ 后处理（提取/清洗/data-did）→ 落盘版本
  */
-import { buildDraftPrompt, buildIteratePrompt, buildEditElementPrompt } from './draft-prompts.js';
+import { buildDraftPrompt, buildIteratePrompt, buildEditElementPrompt, buildEditByImagePrompt } from './draft-prompts.js';
 import { postProcessHtml, sanitizeHtml, injectFragmentDataIds } from './html-post.js';
 import {
   extractElementHtml, replaceElementHtml, maxDataDid, ensureRootDid, extractElementFragment,
@@ -78,4 +78,21 @@ export async function editDraftElement({ drafts, provider, id, did, instruction 
   }
   const { meta, v } = await drafts.saveVersion(id, next, { kind: 'edit-element', instruction });
   return { id: meta.id, title: meta.title, version: v, did: String(did) };
+}
+
+/**
+ * 截图修改（M5）：当前 HTML + 截图 + 指令 -> LLM 输出新整页 HTML -> 后处理 -> 存 v(N+1)
+ * @param {{ drafts: import('./drafts.js').DraftStore, provider: object,
+ *           id: string, image: string, instruction: string }} opts
+ * @returns {Promise<{ id: string, title: string, version: number }>}
+ */
+export async function editDraftByImage({ drafts, provider, id, image, instruction }) {
+  if (!instruction?.trim()) throw new Error('instruction required');
+  if (!image) throw new Error('image required');
+  const { html } = await drafts.readHtml(id);
+  const messages = buildEditByImagePrompt({ currentHtml: html, instruction, image });
+  const raw = await provider.complete(messages);
+  const newHtml = postProcessHtml(raw);
+  const { meta, v } = await drafts.saveVersion(id, newHtml, { kind: 'edit-by-image', instruction });
+  return { id: meta.id, title: meta.title, version: v };
 }

@@ -1,7 +1,7 @@
 /**
- * llm.js — LLM Provider 抽象（SPEC 2.1）
- * 无 API key → MockProvider（确定性模板：登录页/仪表盘/落地页），保证离线可测。
- * MockProvider 输出约束在 packages/server/src/jsx.js 可转换的 JSX 子集内。
+ * llm.js - LLM Provider 抽象（HTML 草稿模式 M1-M4）
+ * 无 API key -> MockProvider（确定性 HTML 模板：登录/仪表盘/落地页），保证离线可测。
+ * MockProvider 输出整页 HTML，由 server html-post.js 后处理（sanitize + data-did 注入）。
  */
 
 export class LLMProvider {
@@ -9,193 +9,6 @@ export class LLMProvider {
   async complete(_messages, _opts = {}) {
     throw new Error('LLMProvider.complete not implemented');
   }
-}
-
-/* ---------------- MockProvider 确定性模板 ---------------- */
-
-const LOGIN_PAGE = `import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-
-export default function App() {
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Card style={{ width: '360px' }}>
-        <h2 style={{ marginTop: '0' }}>登录</h2>
-        <p style={{ color: '#6a6a64', fontSize: '13px' }}>欢迎回来，请登录你的账户</p>
-        <form>
-          <div style={{ marginBottom: '16px' }}>
-            <Label>邮箱</Label>
-            <Input type="email" placeholder="you@example.com" />
-          </div>
-          <div style={{ marginBottom: '24px' }}>
-            <Label>密码</Label>
-            <Input type="password" placeholder="••••••••" />
-          </div>
-          <Button variant="default" size="lg" style={{ width: '100%' }}>登录</Button>
-        </form>
-        <p style={{ fontSize: '13px', color: '#6a6a64', textAlign: 'center', marginBottom: '0' }}>
-          还没有账户？<Button variant="link">立即注册</Button>
-        </p>
-      </Card>
-    </div>
-  );
-}
-`;
-
-const DASHBOARD_PAGE = `import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Table } from '@/components/ui/table';
-import { Progress } from '@/components/ui/progress';
-
-export default function App() {
-  const stats = [
-    { label: '总用户', value: '12,480', delta: '+8.2%' },
-    { label: '活跃用户', value: '8,932', delta: '+3.1%' },
-    { label: '收入', value: '¥86,400', delta: '+12.4%' },
-    { label: '转化率', value: '4.6%', delta: '-0.8%' },
-  ];
-  return (
-    <div style={{ padding: '40px', maxWidth: '1100px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ margin: '0', fontSize: '24px' }}>仪表盘</h1>
-        <Button variant="outline">导出报表</Button>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        {stats.map((s) => (
-          <Card>
-            <p style={{ margin: '0', fontSize: '13px', color: '#6a6a64' }}>{s.label}</p>
-            <h3 style={{ margin: '4px 0', fontSize: '24px' }}>{s.value}</h3>
-            <Badge>{s.delta}</Badge>
-          </Card>
-        ))}
-      </div>
-      <Card style={{ marginBottom: '24px' }}>
-        <h3 style={{ marginTop: '0' }}>本月目标完成度</h3>
-        <Progress value={68} />
-      </Card>
-      <Card>
-        <h3 style={{ marginTop: '0' }}>最近订单</h3>
-        <Table>
-          <thead>
-            <tr><th>订单号</th><th>客户</th><th>金额</th><th>状态</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>#1001</td><td>张三</td><td>¥1,200</td><td><Badge>已支付</Badge></td></tr>
-            <tr><td>#1002</td><td>李四</td><td>¥860</td><td><Badge>待发货</Badge></td></tr>
-            <tr><td>#1003</td><td>王五</td><td>¥2,340</td><td><Badge>已支付</Badge></td></tr>
-          </tbody>
-        </Table>
-      </Card>
-    </div>
-  );
-}
-`;
-
-const LANDING_PAGE = `import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-
-export default function App() {
-  const features = [
-    { title: '可视化编辑', desc: '拖拽组件，实时预览，所见即所得。' },
-    { title: 'AI 生成', desc: '一句话描述页面，AI 自动生成可用代码。' },
-    { title: '设计系统', desc: 'DESIGN.md 驱动的一致视觉语言。' },
-  ];
-  return (
-    <div>
-      <div style={{ textAlign: 'center', padding: '96px 24px 64px' }}>
-        <Badge>v1.0 现已发布</Badge>
-        <h1 style={{ fontSize: '40px', margin: '16px 0' }}>用 AI 加速你的界面设计</h1>
-        <p style={{ color: '#6a6a64', maxWidth: '520px', margin: '0 auto 32px' }}>
-          从一句话到可运行的 React 页面，AI 设计工具让原型到代码的距离缩短到几分钟。
-        </p>
-        <Button variant="default" size="lg">免费开始</Button>
-        <Button variant="ghost" size="lg">查看演示</Button>
-      </div>
-      <Separator />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', maxWidth: '960px', margin: '0 auto', padding: '48px 24px' }}>
-        {features.map((f) => (
-          <Card>
-            <h3 style={{ marginTop: '0' }}>{f.title}</h3>
-            <p style={{ color: '#6a6a64', marginBottom: '0' }}>{f.desc}</p>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-`;
-
-const GENERIC_PAGE = `import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-
-export default function App() {
-  return (
-    <div style={{ padding: '40px', maxWidth: '720px', margin: '0 auto' }}>
-      <h1>页面标题</h1>
-      <Card>
-        <p style={{ marginTop: '0' }}>这是根据你的描述生成的页面骨架，可在编辑器中继续调整。</p>
-        <Button variant="default">主要操作</Button>
-        <Button variant="outline">次要操作</Button>
-      </Card>
-    </div>
-  );
-}
-`;
-
-/* ---------------- MockProvider 确定性「元素编辑」规则（Phase 2 Task 2.3） ---------------- */
-
-/**
- * 编辑指令 → class/style 变更的关键词映射（按顺序全部匹配，class token 依序拼接）。
- * 确定性：相同指令永远得到相同输出。
- */
-export const MOCK_EDIT_RULES = [
-  [/36\s*px|text-4xl/, { class: 'text-4xl' }],
-  [/字体调大|字号调大|调大一点|更大一点|放大字体/, { class: 'text-2xl' }],
-  [/字体调小|字号调小|调小一点/, { class: 'text-sm' }],
-  [/紫色渐变/, { class: 'bg-gradient-to-r from-purple-500 to-fuchsia-500 bg-clip-text text-transparent' }],
-  [/渐变/, { class: 'bg-gradient-to-r from-teal-400 to-cyan-500 bg-clip-text text-transparent' }],
-  [/全圆角|圆形|胶囊/, { class: 'rounded-full' }],
-  [/圆角/, { class: 'rounded-xl', suppressIf: 'rounded-full' }], // 全圆角已命中时不重复
-  [/背景.{0,4}红|红.{0,4}背景/, { class: 'bg-red-500' }],
-  [/红色/, { class: 'text-red-500', suppressIf: 'bg-red-500' }], // 背景红已命中时不重复加文字红
-  [/加粗/, { class: 'font-bold' }],
-];
-
-/** 编辑模式的 system prompt 标记（nl-edit.js buildEditPrompt 注入） */
-export const EDIT_PROMPT_MARKER = '元素编辑模式';
-
-/** HTML 草稿模式的 system prompt 标记（server draft-prompts.js buildDraftPrompt 注入，M1） */
-export const DRAFT_PROMPT_MARKER = 'HTML 草稿模式';
-
-/** HTML 草稿迭代模式的 system prompt 标记（server draft-prompts.js buildIteratePrompt 注入，M2） */
-export const ITERATE_PROMPT_MARKER = 'HTML 草稿迭代模式';
-
-/** HTML 元素局部编辑模式的 system prompt 标记（server draft-prompts.js buildEditElementPrompt 注入，M3） */
-export const EDIT_ELEMENT_PROMPT_MARKER = '元素局部编辑模式';
-
-/** 编辑模式确定性输出：匹配所有规则，合并 class token，输出 ```json 围栏 */
-function mockEdit(messages) {
-  const instruction = messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
-  const classes = [];
-  let style = null;
-  for (const [re, effect] of MOCK_EDIT_RULES) {
-    if (re.test(instruction)) {
-      if (effect.class) classes.push(effect);
-      if (effect.style) style = { ...(style || {}), ...effect.style };
-    }
-  }
-  const classText = classes
-    .filter((e) => !e.suppressIf || !classes.some((o) => o.class === e.suppressIf))
-    .map((e) => e.class).join(' ');
-  const out = {};
-  if (classText) out.class = classText;
-  if (style) out.style = style;
-  return '```json\n' + JSON.stringify(out) + '\n```';
 }
 
 /* ---------------- MockProvider HTML 草稿模板（M1） ---------------- */
@@ -327,6 +140,18 @@ const MOCK_HTML_GENERIC = mockHtmlDoc('设计草稿', `
 .wrap .card p { margin-bottom: 16px; }
 `);
 
+/** HTML 草稿模式的 system prompt 标记（server draft-prompts.js buildDraftPrompt 注入，M1） */
+export const DRAFT_PROMPT_MARKER = 'HTML 草稿模式';
+
+/** HTML 草稿迭代模式的 system prompt 标记（server draft-prompts.js buildIteratePrompt 注入，M2） */
+export const ITERATE_PROMPT_MARKER = 'HTML 草稿迭代模式';
+
+/** HTML 元素局部编辑模式的 system prompt 标记（server draft-prompts.js buildEditElementPrompt 注入，M3） */
+export const EDIT_ELEMENT_PROMPT_MARKER = '元素局部编辑模式';
+
+/** 截图修改模式的 system prompt 标记（server draft-prompts.js buildEditByImagePrompt 注入，M5） */
+export const EDIT_BY_IMAGE_PROMPT_MARKER = '截图修改模式';
+
 /** 草稿模式确定性输出：关键词路由 + DESIGN.md 主色替换 */
 function mockHtmlDraft(text) {
   let page;
@@ -395,53 +220,49 @@ function mockHtmlIterate(text) {
   return html;
 }
 
-/* ---------------- MockProvider DESIGN.md 配色映射（Phase 3 Task 3.1） ---------------- */
+/**
+ * 截图修改模式确定性输出（M5）：离线 Mock 不解析图片，复用迭代关键词修改逻辑，
+ * 并注入截图修改标记便于测试与服务端识别。真实 LLM 才会真的「看」截图。
+ */
+function mockHtmlEditByImage(text) {
+  let html = mockHtmlIterate(text);
+  if (!/m-img-edit/.test(html)) {
+    html = html.replace(/<\/body>/i, '<div id="m-img-edit" data-did="img" style="display:none">image-edit</div></body>');
+  }
+  return html;
+}
 
 /**
  * 从 messages 文本中解析 DESIGN.md front matter 里的 colors.primary。
- * buildGenerationPrompt 注入 DESIGN.md 全文，故 system 消息含 `primary: '#xxxxxx'`。
+ * buildDraftPrompt 注入 DESIGN.md 全文，故 system 消息含 `primary: '#xxxxxx'`。
  */
 export function extractPrimaryColor(text) {
   const m = /^\s*primary:\s*["']?(#[0-9a-fA-F]{3,8})["']?\s*$/m.exec(text);
   return m ? m[1].toLowerCase() : null;
 }
 
-/**
- * 把 DESIGN.md 主色确定性映射进生成代码：
- * 1) 文件头注入 token 注释 `/* design-tokens: primary=... *\/`
- * 2) 无 style 的默认 Button 注入主色背景（有 style 的 Button 不动，避免破坏既有样式）
- */
-export function applyDesignTokens(code, primary) {
-  if (!primary) return code;
-  let out = `/* design-tokens: primary=${primary} */\n` + code;
-  out = out.replace(/<Button variant="default"(?![^>]*\bstyle=)/g,
-    `<Button variant="default" style={{ background: '${primary}', borderColor: '${primary}' }}`);
-  return out;
-}
-
 export class MockProvider extends LLMProvider {
   /**
-   * 关键词路由：编辑模式（EDIT_PROMPT_MARKER）→ 确定性规则映射；
-   * 登录 / 仪表盘 / 落地页 → 确定性模板；其余 → 通用骨架。
+   * 关键词路由：HTML 草稿模式（M1）/迭代（M2）/元素局部编辑（M3）-> 确定性输出。
    * 相同输入永远得到相同输出（离线可测的关键）。
    */
   async complete(messages, _opts = {}) {
-    const text = messages.map((m) => m.content).join('\n');
-    // 编辑模式优先于页面模板路由（元素代码可能含「登录」等关键词）
-    if (text.includes(EDIT_PROMPT_MARKER)) return mockEdit(messages);
-    // HTML 元素局部编辑模式（M3）：元素 outerHTML + 指令 → 替换后元素
+    // 支持多模态 message（content 为数组时拼接文本部分；图片仅真实 LLM 使用）
+    const text = messages.map((m) => {
+      if (typeof m.content === 'string') return m.content;
+      if (Array.isArray(m.content)) return m.content.map((p) => p.text || '').join('\n');
+      return '';
+    }).join('\n');
+    // 截图修改模式（M5）：当前 HTML + 截图 + 指令 -> 修改后整页 HTML
+    if (text.includes(EDIT_BY_IMAGE_PROMPT_MARKER)) return mockHtmlEditByImage(text);
+    // HTML 元素局部编辑模式（M3）：元素 outerHTML + 指令 -> 替换后元素
     if (text.includes(EDIT_ELEMENT_PROMPT_MARKER)) return mockHtmlElementEdit(text);
     // HTML 草稿迭代模式（M2）：基于当前 HTML + 指令做确定性小修改
     if (text.includes(ITERATE_PROMPT_MARKER)) return mockHtmlIterate(text);
-    // HTML 草稿模式（M1）：返回整页 HTML 而非 JSX
+    // HTML 草稿模式（M1）：返回整页 HTML
     if (text.includes(DRAFT_PROMPT_MARKER)) return mockHtmlDraft(text);
-    const primary = extractPrimaryColor(text);
-    let page;
-    if (/登录|登陆|login|sign[\s-]?in/i.test(text)) page = LOGIN_PAGE;
-    else if (/仪表盘|仪表板|dashboard|后台|管理页/i.test(text)) page = DASHBOARD_PAGE;
-    else if (/落地页|landing|官网|首页|主页|营销/i.test(text)) page = LANDING_PAGE;
-    else page = GENERIC_PAGE;
-    return applyDesignTokens(page, primary);
+    // 兜底：当作草稿生成
+    return mockHtmlDraft(text);
   }
 }
 

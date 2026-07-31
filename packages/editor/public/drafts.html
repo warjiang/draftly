@@ -21,9 +21,6 @@
     </select>
     <button type="submit" class="btn primary" id="gen-btn">生成草稿</button>
   </form>
-  <nav class="nav-links">
-    <a href="/index.html">旧版编辑器 →</a>
-  </nav>
 </header>
 
 <main id="layout">
@@ -73,6 +70,16 @@
     <form id="iterate-form">
       <textarea id="iterate-input" rows="3" placeholder="输入修改指令，如：导航栏改成毛玻璃"></textarea>
       <button type="submit" class="btn primary" id="iterate-btn">迭代当前草稿</button>
+    </form>
+    <div class="pane-title" style="margin-top:16px">截图修改</div>
+    <div id="image-drop" class="image-drop" tabindex="0" role="button" aria-label="选择或粘贴截图">
+      <input type="file" id="image-file" accept="image/*" hidden />
+      <p class="hint" id="image-drop-hint">点击选择 / 粘贴图片（Ctrl+V），照着截图改</p>
+      <img id="image-preview" alt="参考截图预览" hidden />
+    </div>
+    <form id="image-form">
+      <textarea id="image-input" rows="2" placeholder="按截图修改，如：照着截图把首屏改成这样"></textarea>
+      <button type="submit" class="btn primary" id="image-btn">按截图修改</button>
     </form>
     <div class="pane-title" style="margin-top:16px">版本历史</div>
     <ul id="version-list"></ul>

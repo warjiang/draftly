@@ -10,6 +10,7 @@ let drafts = [];      // meta 列表
 let current = null;   // { meta, html, version }
 let pickMode = false; // 点选修改开关（M3）
 let selected = null;  // { did, tagName, textContent }
+let image = null;        // 参考截图 dataURL（M5 截图修改）
 
 /* ---------- 点选修改（M3，父侧直挂 contentDocument，无需向 iframe 注入脚本） ---------- */
 const HOVER_OUTLINE = '2px dashed rgba(59, 130, 246, .7)';
@@ -322,6 +323,79 @@ $('#iterate-form').addEventListener('submit', async (e) => {
   } finally {
     btn.disabled = false;
     btn.textContent = '迭代当前草稿';
+  }
+});
+
+/* ---------- 截图修改（M5）：粘贴/上传截图 + 指令 -> 修改当前草稿 ---------- */
+const imageDrop = $('#image-drop');
+const imageFile = $('#image-file');
+const imagePreview = $('#image-preview');
+const imageDropHint = $('#image-drop-hint');
+
+function setImage(dataUrl) {
+  image = dataUrl || null;
+  if (image) {
+    imagePreview.src = dataUrl;
+    imagePreview.hidden = false;
+    imageDropHint.hidden = true;
+  } else {
+    imagePreview.hidden = true;
+    imagePreview.src = '';
+    imageDropHint.hidden = false;
+  }
+}
+
+imageDrop.addEventListener('click', () => imageFile.click());
+imageDrop.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); imageFile.click(); }
+});
+imageFile.addEventListener('change', () => {
+  const f = imageFile.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => setImage(reader.result);
+  reader.readAsDataURL(f);
+});
+
+// 全局粘贴图片：在任意位置 Ctrl+V 即可填入参考截图
+document.addEventListener('paste', (e) => {
+  const items = e.clipboardData?.items || [];
+  for (const it of items) {
+    if (it.type.startsWith('image/')) {
+      const blob = it.getAsFile();
+      if (!blob) continue;
+      const reader = new FileReader();
+      reader.onload = () => setImage(reader.result);
+      reader.readAsDataURL(blob);
+      e.preventDefault();
+      return;
+    }
+  }
+});
+
+$('#image-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!current) return alert('请先选择一个草稿');
+  if (!image) return alert('请先粘贴或选择一张截图');
+  const instruction = $('#image-input').value.trim();
+  if (!instruction) return;
+  const btn = $('#image-btn');
+  btn.disabled = true;
+  btn.textContent = '修改中…';
+  try {
+    await api(`/api/draft/${encodeURIComponent(current.meta.id)}/edit-by-image`, {
+      body: { image, instruction },
+    });
+    $('#image-input').value = '';
+    setImage(null);
+    imageFile.value = '';
+    await loadDrafts();
+    await selectDraft(current.meta.id);
+  } catch (err) {
+    alert('截图修改失败：' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '按截图修改';
   }
 });
 

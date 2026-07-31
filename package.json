@@ -14,7 +14,7 @@
     "start": "node packages/server/src/dev.js",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "smoke": "node scripts/smoke-phase1.mjs && node scripts/smoke-phase2.mjs && node scripts/smoke-phase3.mjs && node scripts/smoke-phase4.mjs",
+    "smoke": "node scripts/smoke-draft.mjs",
     "check": "npm run build && npm test && npm run smoke"
   }
 }
