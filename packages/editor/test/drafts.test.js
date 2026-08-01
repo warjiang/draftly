@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { groupDraftsByProject } from "../src/lib/drafts.js";
+import { filterProjects, groupProjectsByActivity } from "../src/lib/projects.js";
+import { projectPath, routeForPath } from "../src/lib/router.js";
 
 test("groups duplicate projects and selects the most recently active draft", () => {
   const groups = groupDraftsByProject([
@@ -42,4 +44,40 @@ test("falls back to title when legacy drafts do not have a prompt", () => {
 
   assert.equal(groups.length, 1);
   assert.equal(groups[0].latest.id, "two");
+});
+
+test("parses home and project routes without accepting unsafe project ids", () => {
+  assert.deepEqual(routeForPath("/"), { name: "home" });
+  assert.deepEqual(routeForPath("/projects/p-abc-123"), {
+    name: "project",
+    projectId: "p-abc-123",
+  });
+  assert.deepEqual(routeForPath("/projects/../escape"), { name: "not-found" });
+  assert.equal(projectPath("p-abc-123"), "/projects/p-abc-123");
+});
+
+test("filters projects across title, prompt, and design name and groups activity", () => {
+  const projects = [
+    {
+      id: "today",
+      title: "交易工作台",
+      prompt: "查看订单",
+      design: { name: "Vercel" },
+      updatedAt: "2026-08-01T08:00:00.000Z",
+    },
+    {
+      id: "month",
+      title: "发布页面",
+      prompt: "独立开发者产品",
+      design: { name: "Stripe" },
+      updatedAt: "2026-07-12T08:00:00.000Z",
+    },
+  ];
+
+  assert.deepEqual(filterProjects(projects, "stripe").map((item) => item.id), ["month"]);
+  assert.deepEqual(
+    groupProjectsByActivity(projects, new Date("2026-08-01T12:00:00.000Z"))
+      .map((group) => [group.label, group.projects.map((item) => item.id)]),
+    [["今天", ["today"]], ["过去 30 天", ["month"]]],
+  );
 });

@@ -62,6 +62,7 @@ function SourceTree({
         <div key={node.path}>
           <button
             type="button"
+            role="treeitem"
             className="source-tree-row"
             style={{ paddingLeft: `${8 + depth * 14}px` }}
             aria-expanded={isExpanded}
@@ -90,6 +91,7 @@ function SourceTree({
       <button
         key={node.path}
         type="button"
+        role="treeitem"
         className={cn("source-tree-row source-tree-file", activePath === node.path && "is-active")}
         style={{ paddingLeft: `${8 + depth * 14}px` }}
         title={`${node.path} (${formatSourceSize(node.size)})`}

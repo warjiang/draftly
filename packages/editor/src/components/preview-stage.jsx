@@ -1,8 +1,12 @@
 import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
   Code2Icon,
   CopyIcon,
   DownloadIcon,
+  ExternalLinkIcon,
   FileTextIcon,
+  Maximize2Icon,
   MousePointer2Icon,
   MonitorIcon,
   PlusIcon,
@@ -92,6 +96,7 @@ export function PreviewStage({
   pickMode,
   selected,
   onPreviewLoad,
+  onPreviewNavigate,
   onStageViewChange,
   onCopyDesign,
   onRetryStyle,
@@ -197,10 +202,43 @@ export function PreviewStage({
       </div>
       <TabsContent value="preview" className="stage-panel">
         <div className="preview-frame-shell">
-          <div className="preview-browser-bar" aria-hidden="true">
-            <div className="browser-dots"><span /><span /><span /></div>
-            <div className="preview-address">localhost · {current.meta.title}</div>
-            <span className="preview-status">实时</span>
+          <div className="preview-browser-bar">
+            <div className="preview-navigation" aria-label="预览导航">
+              <PreviewAction label="后退" onClick={() => onPreviewNavigate("back")}>
+                <ArrowLeftIcon />
+              </PreviewAction>
+              <PreviewAction label="前进" onClick={() => onPreviewNavigate("forward")}>
+                <ArrowRightIcon />
+              </PreviewAction>
+              <PreviewAction label="刷新预览" onClick={() => onPreviewNavigate("reload")}>
+                <RefreshCwIcon />
+              </PreviewAction>
+            </div>
+            <a
+              className="preview-address"
+              href={preview?.url}
+              target="_blank"
+              rel="noreferrer"
+              title={preview?.url}
+            >
+              <span className="preview-address-status" aria-hidden="true" />
+              <span>{preview?.url || "正在启动预览"}</span>
+            </a>
+            <div className="preview-window-actions">
+              <span className="preview-status">实时</span>
+              <PreviewAction
+                label="全屏预览"
+                onClick={(event) => event.currentTarget.closest(".preview-frame-shell")?.requestFullscreen()}
+              >
+                <Maximize2Icon />
+              </PreviewAction>
+              <PreviewAction
+                label="在新窗口打开"
+                render={<a href={preview?.url} target="_blank" rel="noreferrer" />}
+              >
+                <ExternalLinkIcon />
+              </PreviewAction>
+            </div>
           </div>
           <iframe
             ref={previewRef}

@@ -222,12 +222,21 @@ export class DraftStore {
         error.status = 409;
         throw error;
       }
+
       return meta;
     } catch (error: unknown) {
       const knownError = errorWithStatus(error);
       if (knownError.status) throw knownError;
       throw new DraftNotFoundError(id);
     }
+  }
+
+  async setProjectId(id: unknown, projectId: string): Promise<DraftMeta> {
+    const meta = await this.meta(id);
+    if (meta.projectId === projectId) return meta;
+    const next = { ...meta, projectId };
+    await writeJsonAtomic(this._metaPath(id), next);
+    return next;
   }
 
   async head(id: unknown): Promise<string> {

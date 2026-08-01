@@ -6,7 +6,9 @@ import { DraftStore } from './drafts.js';
 import { createApiApp } from './http.js';
 import { loadEnv } from './load-env.js';
 import { resolveDraftsDir } from './paths.js';
+import { resolveProjectsDir } from './paths.js';
 import { createPiHarnessProvider } from './pi-harness.js';
+import { ProjectStore } from './projects.js';
 import { errorWithStatus } from './types.js';
 
 loadEnv();
@@ -14,6 +16,7 @@ loadEnv();
 const host = process.env.HOST || '127.0.0.1';
 const port = Number.parseInt(process.env.PORT || '4173', 10);
 const draftsDir = resolveDraftsDir();
+const projectsDir = resolveProjectsDir();
 
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
   console.error(`Invalid PORT: ${process.env.PORT}`);
@@ -21,11 +24,14 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
 }
 
 fs.mkdirSync(draftsDir, { recursive: true });
+fs.mkdirSync(projectsDir, { recursive: true });
 
 const drafts = new DraftStore({ rootDir: draftsDir });
+const projects = new ProjectStore({ rootDir: projectsDir, drafts });
 const { app, previewManager } = createApiApp({
   provider: createPiHarnessProvider(),
   drafts,
+  projects,
 });
 const server = serve({
   fetch: app.fetch,
@@ -34,6 +40,7 @@ const server = serve({
 }, (address) => {
   console.log(`draftly is running at http://${host}:${address.port}`);
   console.log(`Drafts directory: ${draftsDir}`);
+  console.log(`Projects directory: ${projectsDir}`);
   console.log(`Pi harness: ${process.env.DRAFTLY_PI_COMMAND || 'pi'}${process.env.DRAFTLY_PI_MODEL ? ` (${process.env.DRAFTLY_PI_MODEL})` : ''}`);
 }) as Server;
 

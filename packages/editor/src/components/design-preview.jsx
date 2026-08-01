@@ -1,5 +1,25 @@
 import { ArrowUpRightIcon, CheckIcon } from "lucide-react";
 import { buildDesignPreviewStyle, designPreviewName } from "@/lib/design-preview";
+import { cn } from "@/lib/utils";
+
+export function DesignThumbnail({ meta = {}, compact = false, className }) {
+  return (
+    <div
+      className={cn("design-thumbnail", compact && "is-compact", className)}
+      style={buildDesignPreviewStyle(meta)}
+      aria-hidden="true"
+    >
+      <div className="design-thumbnail-rail"><span /><span /><span /></div>
+      <div className="design-thumbnail-canvas">
+        <span className="design-thumbnail-kicker" />
+        <span className="design-thumbnail-title" />
+        <span className="design-thumbnail-copy" />
+        <div className="design-thumbnail-actions"><span /><span /></div>
+        <div className="design-thumbnail-grid"><span /><span /></div>
+      </div>
+    </div>
+  );
+}
 
 export function DesignSpecimen({ meta, label }) {
   const style = buildDesignPreviewStyle(meta);

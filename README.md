@@ -35,6 +35,7 @@ npm run dev
 HOST=127.0.0.1
 PORT=4173
 DRAFTLY_DRAFTS_DIR=.draftly/drafts
+DRAFTLY_PROJECTS_DIR=.draftly/projects
 DRAFTLY_PI_COMMAND=pi
 DRAFTLY_PI_PROVIDER=anthropic
 DRAFTLY_PI_MODEL=claude-sonnet-4-20250514
@@ -44,21 +45,28 @@ DRAFTLY_PI_THINKING=medium
 Pi 未安装、未认证、源码任务失败或项目构建失败时，操作会明确失败并恢复任务前的 Git
 工作树，不会生成假草稿。
 
-## 源码草稿结构
+## 项目与源码方案结构
 
 ```text
-.draftly/drafts/<draft-id>/
-├── meta.json
-└── project/
-    ├── .git/
-    ├── package.json
-    ├── components.json
-    ├── vite.config.ts
-    └── src/
+.draftly/
+├── projects/
+│   └── <project-id>.json       # 项目、DESIGN.md 与方案关联
+└── drafts/
+    └── <draft-id>/
+        ├── meta.json           # 单个视觉方案 metadata
+        └── project/
+            ├── .git/
+            ├── DESIGN.md
+            ├── package.json
+            ├── components.json
+            ├── vite.config.ts
+            └── src/
 ```
 
-每次成功的生成或修改对应一个 Git commit。`meta.json` 保存用户可见版本号与 commit 的
-映射。回退不会删除历史，而是恢复目标 commit 的文件树后创建新的 rollback commit。
+首页 `/` 用于搜索项目、切换内置 DESIGN.md 或导入本地 DESIGN.md 并创建项目；项目工作区
+位于 `/projects/:id`。一个项目可以包含多个视觉方案，每个方案仍是独立、可运行的 React
+工程。每次成功的生成或修改对应一个 Git commit。`meta.json` 保存用户可见版本号与 commit
+的映射。回退不会删除历史，而是恢复目标 commit 的文件树后创建新的 rollback commit。
 
 ## 点选修改
 
@@ -96,9 +104,14 @@ npm run check           # build + test + smoke
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| GET | `/api/projects` | 按最近活动返回项目摘要 |
+| GET | `/api/projects/:id` | 返回项目、DESIGN.md 与方案列表 |
+| POST | `/api/projects/generate` | 创建项目并生成方案 `{prompt, variants?, templateId? / designMd?}` |
+| PATCH | `/api/projects/:id` | 更新项目标题或当前方案 |
 | POST | `/api/drafts/generate` | 生成源码草稿 `{prompt, variants?, style?}` |
 | GET | `/api/drafts` | 草稿列表 |
 | GET | `/api/drafts/:id` | 草稿 metadata、当前版本和默认入口源码 |
+| GET | `/api/drafts/:id/files` | 列出可浏览的项目源码文件；排除依赖、构建产物和敏感配置 |
 | GET | `/api/drafts/:id/source?file=src/App.tsx` | 读取受限项目源码 |
 | POST | `/api/drafts/:id/preview` | 启动/复用 Vite 预览 |
 | POST | `/api/drafts/:id/iterate` | 整页源码迭代 `{instruction}` |
@@ -109,6 +122,7 @@ npm run check           # build + test + smoke
 | GET | `/api/drafts/:id/export` | 下载源码 ZIP |
 | GET | `/api/templates` | 风格预设列表 |
 | GET | `/api/templates/:id` | 风格预设详情 |
+| POST | `/api/designs/validate` | 校验导入的 DESIGN.md 并返回解析后 token |
 | POST | `/api/extract` | 从 `{html, css}` 或 `{url}` 提取设计系统 |
 
 生成、迭代、点选、截图和回退接口可追加 `?stream=1`，以 NDJSON 依次返回 scaffold、依赖

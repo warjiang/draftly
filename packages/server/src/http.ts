@@ -6,7 +6,7 @@ import archiver from 'archiver';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
-import { parseDesignMd } from '../../shared/src/design-md.js';
+import { defaultDesignMd, parseDesignMd, validateDesignMd } from '../../shared/src/design-md.js';
 import {
   editDraftByImage,
   editDraftSource,
@@ -14,6 +14,7 @@ import {
   iterateDraft,
 } from './draft-generate.js';
 import type { DraftStore } from './drafts.js';
+import { ProjectStore } from './projects.js';
 import { extractDesign, fetchSiteAssets } from './extract.js';
 import { PreviewManager } from './preview-manager.js';
 import { assertNoEscapingSymlinks } from './source-locator.js';
@@ -22,6 +23,8 @@ import type {
   ErrorWithStatus,
   PreviewManagerLike,
   ProgressHandler,
+  ProjectDesign,
+  ProjectMeta,
   SourceLocator,
   WorkspaceProvider,
 } from './types.js';
@@ -38,6 +41,7 @@ export type ApiAppOptions = {
   provider?: WorkspaceProvider;
   editorDir?: string;
   drafts: DraftStore;
+  projects?: ProjectStore;
   previewManager?: PreviewManagerLike;
 };
 
@@ -50,6 +54,10 @@ export function createApiApp({
   provider,
   editorDir = EDITOR_DIR,
   drafts,
+  projects = new ProjectStore({
+    rootDir: path.resolve(drafts.rootDir, '../projects'),
+    drafts,
+  }),
   previewManager,
 }: ApiAppOptions): ApiAppBundle {
   if (!drafts) throw new Error('createApiApp: drafts store required');
@@ -70,23 +78,144 @@ export function createApiApp({
     }>(c);
     if (!input.prompt?.trim()) return json(c, { error: 'prompt required' }, 400);
 
-    let designMd: string | null = null;
+    let design: ProjectDesign = {
+      source: 'default',
+      name: 'Draftly Default',
+      templateId: null,
+      content: defaultDesignMd(),
+    };
     if (input.style) {
       const template = await getTemplate(String(input.style));
       if (!template) return json(c, { error: `unknown style: ${input.style}` }, 400);
-      designMd = template.designMd;
+      design = {
+        source: 'template',
+        name: template.name,
+        templateId: template.id,
+        content: template.designMd,
+      };
     }
 
-    const execute: Operation<Awaited<ReturnType<typeof generateDrafts>>> = (onProgress) =>
-      generateDrafts({
-        drafts,
-        provider,
-        prompt: input.prompt!,
-        variants: input.variants,
-        designMd,
-        onProgress,
-      });
+    const execute: Operation<Awaited<ReturnType<typeof generateDrafts>> & {
+      project: ReturnType<typeof projectSummary>;
+    }> = async (onProgress) => {
+      const project = await projects.create({ prompt: input.prompt!, design });
+      try {
+        const generated = await generateDrafts({
+          drafts,
+          provider,
+          prompt: input.prompt!,
+          variants: input.variants,
+          designMd: design.content,
+          onProgress,
+        });
+        const saved = await projects.addDrafts(project.id, generated.drafts.map((draft) => draft.id));
+        return { ...generated, project: projectSummary(saved) };
+      } catch (error) {
+        await projects.remove(project.id).catch(() => {});
+        throw error;
+      }
+    };
     return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
+  });
+
+  app.get('/api/projects', async (c) => {
+    const items = await projects.list();
+    return json(c, {
+      projects: items.map(projectSummary),
+    });
+  });
+
+  app.get('/api/projects/:id', async (c) => {
+    const project = await projects.meta(c.req.param('id'));
+    const draftsById = await Promise.all(project.draftIds.map(async (id) => {
+      try {
+        return await drafts.meta(id);
+      } catch {
+        return null;
+      }
+    }));
+    return json(c, {
+      project: projectSummary(project),
+      design: project.design,
+      drafts: draftsById.filter((draft) => draft !== null),
+    });
+  });
+
+  app.post('/api/projects/generate', async (c) => {
+    const input = await readJson<{
+      prompt?: string;
+      variants?: string | number;
+      templateId?: string;
+      designMd?: string;
+      designName?: string;
+    }>(c);
+    if (!input.prompt?.trim()) return json(c, { error: 'prompt required' }, 400);
+    if (input.templateId && input.designMd) {
+      return json(c, { error: 'choose templateId or designMd, not both' }, 400);
+    }
+
+    let design: ProjectDesign;
+    if (input.templateId) {
+      const template = await getTemplate(input.templateId);
+      if (!template) return json(c, { error: `unknown template: ${input.templateId}` }, 400);
+      design = {
+        source: 'template',
+        name: template.name,
+        templateId: template.id,
+        content: template.designMd,
+      };
+    } else if (input.designMd) {
+      if (input.designMd.length > 200_000) {
+        return json(c, { error: 'DESIGN.md is too large (maximum 200 KB)' }, 413);
+      }
+      const errors = validateDesignMd(input.designMd);
+      if (errors.length) return json(c, { error: 'invalid DESIGN.md', errors }, 400);
+      design = {
+        source: 'import',
+        name: String(input.designName || parseDesignMd(input.designMd).meta.name || 'Imported design').slice(0, 80),
+        templateId: null,
+        content: input.designMd,
+      };
+    } else {
+      design = {
+        source: 'default',
+        name: 'Draftly Default',
+        templateId: null,
+        content: defaultDesignMd(),
+      };
+    }
+
+    const execute: Operation<{
+      project: ReturnType<typeof projectSummary>;
+      drafts: Awaited<ReturnType<typeof generateDrafts>>['drafts'];
+    }> = async (onProgress) => {
+      const project = await projects.create({ prompt: input.prompt!, design });
+      try {
+        const generated = await generateDrafts({
+          drafts,
+          provider,
+          prompt: input.prompt!,
+          variants: input.variants,
+          designMd: design.content,
+          onProgress,
+        });
+        const saved = await projects.addDrafts(project.id, generated.drafts.map((draft) => draft.id));
+        return { project: projectSummary(saved), drafts: generated.drafts };
+      } catch (error) {
+        await projects.remove(project.id).catch(() => {});
+        throw error;
+      }
+    };
+    return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
+  });
+
+  app.patch('/api/projects/:id', async (c) => {
+    const input = await readJson<{ title?: string; activeDraftId?: string }>(c);
+    if (input.title === undefined && input.activeDraftId === undefined) {
+      return json(c, { error: 'title or activeDraftId required' }, 400);
+    }
+    const project = await projects.update(c.req.param('id'), input);
+    return json(c, { project: projectSummary(project) });
   });
 
   app.get('/api/drafts', async (c) => json(c, { drafts: await drafts.list() }));
@@ -134,14 +263,17 @@ export function createApiApp({
   app.post('/api/drafts/:id/iterate', async (c) => {
     const input = await readJson<{ instruction?: string }>(c);
     if (!input.instruction?.trim()) return json(c, { error: 'instruction required' }, 400);
-    const execute: Operation<Awaited<ReturnType<typeof iterateDraft>>> = (onProgress) =>
-      iterateDraft({
+    const execute: Operation<Awaited<ReturnType<typeof iterateDraft>>> = async (onProgress) => {
+      const result = await iterateDraft({
         drafts,
         provider,
         id: c.req.param('id'),
         instruction: input.instruction!,
         onProgress,
       });
+      await projects.touchByDraft(c.req.param('id'));
+      return result;
+    };
     return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
   });
 
@@ -152,8 +284,8 @@ export function createApiApp({
     }>(c);
     if (!input.instruction?.trim()) return json(c, { error: 'instruction required' }, 400);
     if (!input.locator) return json(c, { error: 'locator required' }, 400);
-    const execute: Operation<Awaited<ReturnType<typeof editDraftSource>>> = (onProgress) =>
-      editDraftSource({
+    const execute: Operation<Awaited<ReturnType<typeof editDraftSource>>> = async (onProgress) => {
+      const result = await editDraftSource({
         drafts,
         provider,
         id: c.req.param('id'),
@@ -161,6 +293,9 @@ export function createApiApp({
         instruction: input.instruction!,
         onProgress,
       });
+      await projects.touchByDraft(c.req.param('id'));
+      return result;
+    };
     return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
   });
 
@@ -168,8 +303,8 @@ export function createApiApp({
     const input = await readJson<{ image?: string; instruction?: string }>(c);
     if (!input.image) return json(c, { error: 'image required' }, 400);
     if (!input.instruction?.trim()) return json(c, { error: 'instruction required' }, 400);
-    const execute: Operation<Awaited<ReturnType<typeof editDraftByImage>>> = (onProgress) =>
-      editDraftByImage({
+    const execute: Operation<Awaited<ReturnType<typeof editDraftByImage>>> = async (onProgress) => {
+      const result = await editDraftByImage({
         drafts,
         provider,
         id: c.req.param('id'),
@@ -177,6 +312,9 @@ export function createApiApp({
         instruction: input.instruction!,
         onProgress,
       });
+      await projects.touchByDraft(c.req.param('id'));
+      return result;
+    };
     return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
   });
 
@@ -192,6 +330,7 @@ export function createApiApp({
     }> = async (onProgress) => {
       onProgress?.({ type: 'pipeline', stage: 'rollback_started', target: Number(input.v) });
       const result = await drafts.rollbackVersion(c.req.param('id'), input.v!);
+      await projects.touchByDraft(c.req.param('id'));
       onProgress?.({ type: 'pipeline', stage: 'version_saved', version: result.version });
       return {
         id: result.meta.id,
@@ -220,6 +359,20 @@ export function createApiApp({
     });
   });
 
+  app.post('/api/designs/validate', async (c) => {
+    const input = await readJson<{ content?: string }>(c);
+    if (!input.content) return json(c, { error: 'content required' }, 400);
+    if (input.content.length > 200_000) {
+      return json(c, { error: 'DESIGN.md is too large (maximum 200 KB)' }, 413);
+    }
+    const errors = validateDesignMd(input.content);
+    return json(c, {
+      valid: errors.length === 0,
+      errors,
+      meta: errors.length ? null : parseDesignMd(input.content).meta,
+    });
+  });
+
   app.post('/api/extract', async (c) => {
     const input = await readJson<{
       url?: string;
@@ -231,15 +384,26 @@ export function createApiApp({
     if (!input.html && !cssTexts.length) {
       return json(c, { error: 'required: { html, css } or { url }' }, 400);
     }
+
     return json(c, extractDesign({ html: input.html ?? '', cssTexts }));
   });
 
   app.all('/api/*', (c) =>
     json(c, { error: `unknown endpoint: ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));
 
+  app.use('*', async (c, next) => {
+    c.header(
+      'Cache-Control',
+      c.req.path.startsWith('/assets/')
+        ? 'public, max-age=31536000, immutable'
+        : 'no-cache',
+    );
+    await next();
+  });
+
   app.get('*', serveStatic({
     root: editorDir,
-    rewriteRequestPath: (requestPath) => requestPath === '/' ? '/index.html' : requestPath,
+    rewriteRequestPath: (requestPath) => path.extname(requestPath) ? requestPath : '/index.html',
   }));
 
   app.notFound((c) => c.text('not found', 404));
@@ -249,6 +413,27 @@ export function createApiApp({
   });
 
   return { app, previewManager: previews };
+}
+
+function projectSummary(project: ProjectMeta) {
+  const meta = parseDesignMd(project.design.content).meta;
+  return {
+    id: project.id,
+    title: project.title,
+    prompt: project.prompt,
+    design: {
+      source: project.design.source,
+      name: project.design.name,
+      templateId: project.design.templateId,
+      colors: meta.colors ?? {},
+      typography: meta.typography ?? {},
+    },
+    draftIds: project.draftIds,
+    activeDraftId: project.activeDraftId,
+    variantCount: project.draftIds.length,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+  };
 }
 
 async function readJson<T extends JsonObject>(c: Context): Promise<T> {

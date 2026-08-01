@@ -15,7 +15,9 @@ before(async () => {
   temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-http-tests-'));
   const editorDir = path.join(temporaryRoot, 'editor');
   await fs.mkdir(editorDir, { recursive: true });
+  await fs.mkdir(path.join(editorDir, 'assets'), { recursive: true });
   await fs.writeFile(path.join(editorDir, 'index.html'), '<!doctype html><div id="root"></div>');
+  await fs.writeFile(path.join(editorDir, 'assets', 'index-abc123.js'), 'export {}');
   drafts = new DraftStore({
     rootDir: path.join(temporaryRoot, 'drafts'),
     installDependencies: false,
@@ -38,7 +40,14 @@ after(async () => {
 test('serves the Vite editor entry', async () => {
   const response = await app.request('/');
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-cache');
   assert.match(await response.text(), /id="root"/);
+  const projectRoute = await app.request('/projects/p-example-123');
+  assert.equal(projectRoute.status, 200);
+  assert.match(await projectRoute.text(), /id="root"/);
+  const asset = await app.request('/assets/index-abc123.js');
+  assert.equal(asset.status, 200);
+  assert.equal(asset.headers.get('cache-control'), 'public, max-age=31536000, immutable');
 });
 
 test('serves template details and rejects an unknown template', async () => {
@@ -54,6 +63,26 @@ test('serves template details and rejects an unknown template', async () => {
   assert.ok(template.designMd);
   assert.match(template.meta?.colors?.primary ?? '', /^#[0-9a-f]{6}$/);
   assert.equal((await app.request('/api/templates/nope')).status, 404);
+});
+
+test('validates imported DESIGN.md before project generation', async () => {
+  const invalid = await app.request('/api/designs/validate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: '# no front matter' }),
+  });
+  assert.equal(invalid.status, 200);
+  assert.equal((await invalid.json() as { valid: boolean }).valid, false);
+
+  const template = await (await app.request('/api/templates/vercel')).json() as { designMd: string };
+  const valid = await app.request('/api/designs/validate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: template.designMd }),
+  });
+  const result = await valid.json() as { valid: boolean; meta: { name: string } };
+  assert.equal(result.valid, true);
+  assert.ok(result.meta.name);
 });
 
 test('serves an optional parsed DESIGN.md for drafts', async () => {
