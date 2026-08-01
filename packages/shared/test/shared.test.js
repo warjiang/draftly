@@ -5,10 +5,12 @@ import { parseDesignMd, serializeDesignMd, defaultDesignMd, validateDesignMd } f
 test('parseDesignMd / serializeDesignMd 往返', () => {
   const src = defaultDesignMd();
   const { meta, body } = parseDesignMd(src);
-  assert.equal(meta.colors.primary, '#3f4a5a');
-  assert.equal(meta.typography.scale.h1, '32px');
-  assert.deepEqual(meta.spacing.scale, ['4px', '8px', '16px', '24px', '40px']);
+  assert.equal(meta.colors.primary, '#347b69');
+  assert.equal(meta.typography.scale.h1, '56px');
+  assert.deepEqual(meta.spacing.scale, ['4px', '8px', '16px', '24px', '40px', '64px', '96px']);
   assert.match(body, /设计原则/);
+  assert.match(body, /shadcn\/ui/);
+  assert.match(body, /prefers-reduced-motion/);
   const round = parseDesignMd(serializeDesignMd(meta, body));
   assert.deepEqual(round.meta, meta);
   assert.equal(round.body, body);

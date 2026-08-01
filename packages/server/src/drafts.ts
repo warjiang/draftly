@@ -16,8 +16,12 @@ const DEFAULT_TEMPLATE_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../draft-template',
 );
+const COMPONENT_REGISTRY = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../shared/component-registry.json',
+);
 const DRAFT_ID = /^[a-z0-9][a-z0-9-]*$/;
-const TEMPLATE_VERSION = 1;
+const TEMPLATE_VERSION = 2;
 
 export class DraftNotFoundError extends Error {
   status = 404;
@@ -145,6 +149,7 @@ export class DraftStore {
     try {
       onProgress?.({ type: 'pipeline', stage: 'scaffold_started' });
       await copyTemplate(this.templateDir, projectDir);
+      await fs.copyFile(COMPONENT_REGISTRY, path.join(projectDir, 'component-registry.json'));
       if (designMd) await fs.writeFile(path.join(projectDir, 'DESIGN.md'), `${designMd.trim()}\n`);
       await writeJsonAtomic(this._metaPath(id), meta);
       onProgress?.({ type: 'pipeline', stage: 'scaffold_completed' });

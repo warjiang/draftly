@@ -95,8 +95,15 @@ test('DraftStore creates an isolated React project and commits monotonic Git ver
   const draft = await store.createProject({ prompt: '做一个产品页' });
   assert.equal(draft.format, 'vite-react');
   assert.equal(draft.schemaVersion, 2);
+  assert.equal(draft.templateVersion, 2);
   assert.equal((await store.meta(draft.id)).versions.length, 0);
   assert.match(await fs.readFile(path.join(store.projectDir(draft.id), 'vite.config.ts'), 'utf8'), /locatorJsx/);
+  const registry = JSON.parse(
+    await fs.readFile(path.join(store.projectDir(draft.id), 'component-registry.json'), 'utf8'),
+  ) as { components: Array<{ name: string; import: string }> };
+  assert.ok(registry.components.some(
+    (component) => component.name === 'Field' && component.import === '@/components/ui/field',
+  ));
 
   const first = await store.runVersionTransaction(
     draft.id,
@@ -143,7 +150,7 @@ test('source locator resolves selected JSX, imports, and owning component', asyn
   assert.equal(context.file, 'src/App.tsx');
   assert.equal(context.component, 'App');
   assert.match(context.selectedSource, /^<h1/);
-  assert.match(context.context, /import \{ ArrowRight \}/);
+  assert.match(context.context, /import \{ ArrowUpRight, Check, Layers3/);
   assert.match(context.context, /Owning component/);
 });
 

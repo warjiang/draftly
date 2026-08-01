@@ -1,118 +1,30 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { groupProgressSteps, mergeProgressStep } from "@/lib/progress";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppHeader } from "@/components/app-header";
+import { AppOverlays } from "@/components/app-overlays";
+import { ConversationPanel } from "@/components/conversation-panel";
+import { PreviewStage } from "@/components/preview-stage";
+import { Toaster, toast } from "@/components/ui/toast";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { api, apiStream } from "@/lib/api";
+import { groupDraftsByProject } from "@/lib/drafts";
+import { mergeProgressStep } from "@/lib/progress";
 import "./App.css";
 
 const NEW_KEY = "__new__";
 
-function welcomeMsg() {
-  return { role: "system", text: "描述你想要的页面开始生成，例如：做一个深色科技感的 SaaS 定价页" };
-}
-
-async function api(path, opts = {}) {
-  const res = await fetch(path, opts.body !== undefined ? {
-    method: opts.method || "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(opts.body),
-  } : undefined);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `${res.status}`);
-  return data;
-}
-
-async function apiStream(path, body, onProgress) {
-  const res = await fetch(`${path}${path.includes("?") ? "&" : "?"}stream=1`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `${res.status}`);
-  }
-  if (!res.body) throw new Error("浏览器不支持流式响应");
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let result;
-
-  const consume = (line) => {
-    if (!line.trim()) return;
-    const message = JSON.parse(line);
-    if (message.type === "progress") onProgress(message.event);
-    if (message.type === "result") result = message.data;
-    if (message.type === "error") throw new Error(message.error || "Pi 任务失败");
+function welcomeMessage() {
+  return {
+    id: crypto.randomUUID(),
+    role: "system",
+    text: "先说清页面要解决什么问题，再补充受众、内容与偏好的视觉气质。",
   };
-
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) consume(line);
-    if (done) break;
-  }
-  consume(buffer);
-  if (!result) throw new Error("Pi 任务未返回结果");
-  return result;
 }
 
-function GenerationPlaceholder({ variantCount }) {
-  return (
-    <div className="generation-placeholder" aria-live="polite" aria-busy="true">
-      <div className="generation-placeholder-head">
-        <div className="generation-placeholder-copy">
-          <div className="generation-kicker"><Spinner /> 正在构建可运行的 React 页面</div>
-          <h2>预览会随着源码生成逐步就绪</h2>
-          <p>Pi 正在创建组件、样式和交互，完成构建后这里会自动切换为实时页面。</p>
-        </div>
-        <Badge variant="outline">{variantCount} 个方案并行生成</Badge>
-      </div>
-      <div className="browser-skeleton">
-        <div className="browser-skeleton-bar">
-          <div className="browser-dots"><span /><span /><span /></div>
-          <Skeleton className="h-3 w-48" />
-          <Skeleton className="h-7 w-20" />
-        </div>
-        <div className="browser-skeleton-body">
-          <div className="browser-skeleton-copy">
-            <Skeleton className="h-3 w-24" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-4/5" />
-            <Skeleton className="mt-2 h-4 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-            <div className="browser-skeleton-actions">
-              <Skeleton className="h-9 w-28" />
-              <Skeleton className="h-9 w-24" />
-            </div>
-          </div>
-          <div className="browser-skeleton-visual">
-            <Skeleton className="h-5 w-32" />
-            <div className="browser-skeleton-chart">
-              <Skeleton className="h-20 w-full" />
-              <div className="browser-skeleton-stats">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </div>
-            </div>
-          </div>
-          <div className="browser-skeleton-grid">
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+function readImage(file, onLoad) {
+  if (!file?.type.startsWith("image/")) return;
+  const reader = new FileReader();
+  reader.onload = () => onLoad(reader.result);
+  reader.readAsDataURL(file);
 }
 
 export default function App() {
@@ -120,7 +32,7 @@ export default function App() {
   const [current, setCurrent] = useState(null);
   const [preview, setPreview] = useState(null);
   const [activeKey, setActiveKey] = useState(NEW_KEY);
-  const [chatStore, setChatStore] = useState({ [NEW_KEY]: [welcomeMsg()] });
+  const [chatStore, setChatStore] = useState({ [NEW_KEY]: [welcomeMessage()] });
   const [pickMode, setPickMode] = useState(false);
   const [selected, setSelected] = useState(null);
   const [image, setImage] = useState(null);
@@ -128,68 +40,81 @@ export default function App() {
   const [taskMode, setTaskMode] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [rollbackVersion, setRollbackVersion] = useState(null);
   const [styleId, setStyleId] = useState("__default__");
   const [styles, setStyles] = useState([]);
   const [variants, setVariants] = useState("3");
   const [text, setText] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
   const previewRef = useRef(null);
   const fileRef = useRef(null);
   const chatEndRef = useRef(null);
   const progressStepsRef = useRef(new Map());
 
   const messages = useMemo(() => chatStore[activeKey] || [], [chatStore, activeKey]);
+  const draftGroups = useMemo(() => groupDraftsByProject(drafts), [drafts]);
+  const versions = useMemo(() => current?.meta?.versions?.slice().reverse() || [], [current]);
+  const sendingLabel = {
+    generate: "生成中",
+    image: "按截图修改中",
+    source: "修改元素中",
+    iterate: "迭代中",
+  }[taskMode] || "处理中";
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ block: "end" }); }, [messages]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [messages]);
 
-  const updateMessages = (key, updater) => {
-    setChatStore((prev) => {
-      const arr = [...(prev[key] || [])];
-      updater(arr);
-      return { ...prev, [key]: arr };
+  const updateMessages = useCallback((key, updater) => {
+    setChatStore((previous) => {
+      const items = [...(previous[key] || [])];
+      updater(items);
+      return { ...previous, [key]: items };
     });
-  };
+  }, []);
 
-  const pushMessage = (msg, key = activeKey) => {
-    updateMessages(key, (arr) => arr.push(msg));
-    return msg;
-  };
+  const pushMessage = useCallback((message, key = activeKey) => {
+    const next = { id: message.id || crypto.randomUUID(), ...message };
+    updateMessages(key, (items) => items.push(next));
+    return next;
+  }, [activeKey, updateMessages]);
 
-  const replaceMessage = (target, next, key = activeKey) => {
-    updateMessages(key, (arr) => {
-      const idx = target.id ? arr.findIndex((item) => item.id === target.id) : arr.indexOf(target);
-      if (idx >= 0) arr[idx] = next;
+  const replaceMessage = useCallback((target, next, key = activeKey) => {
+    updateMessages(key, (items) => {
+      const index = items.findIndex((item) => item.id === target.id);
+      if (index >= 0) items[index] = { id: target.id, ...next };
     });
-  };
+  }, [activeKey, updateMessages]);
 
-  const updateProgress = (target, event, key = activeKey) => {
+  const updateProgress = useCallback((target, event, key = activeKey) => {
     const steps = mergeProgressStep(progressStepsRef.current.get(target.id) || [], event);
     progressStepsRef.current.set(target.id, steps);
-    updateMessages(key, (arr) => {
-      const idx = arr.findIndex((item) => item.id === target.id);
-      if (idx >= 0) arr[idx] = { ...arr[idx], steps };
+    updateMessages(key, (items) => {
+      const index = items.findIndex((item) => item.id === target.id);
+      if (index >= 0) items[index] = { ...items[index], steps };
     });
-  };
+  }, [activeKey, updateMessages]);
 
-  const loadDrafts = async () => {
+  const loadDrafts = useCallback(async ({ quiet = false } = {}) => {
     try {
-      const { drafts: list } = await api("/api/drafts", { method: "GET" });
+      const { drafts: list = [] } = await api("/api/drafts", { method: "GET" });
       setDrafts(list);
-    } catch {
+    } catch (error) {
       setDrafts([]);
+      if (!quiet) toast.add({ title: "无法载入草稿", description: error.message, type: "error" });
     }
-  };
+  }, []);
 
-  const loadStyles = async () => {
+  const loadStyles = useCallback(async () => {
     try {
-      const { templates } = await api("/api/templates", { method: "GET" });
+      const { templates = [] } = await api("/api/templates", { method: "GET" });
       setStyles(templates);
-    } catch {
+    } catch (error) {
       setStyles([]);
+      toast.add({ title: "无法载入风格预设", description: error.message, type: "error" });
     }
-  };
+  }, []);
 
-  const loadDraftIntoView = async (id, version = null) => {
+  const loadDraftIntoView = useCallback(async (id) => {
     const data = await api(`/api/drafts/${encodeURIComponent(id)}`, { method: "GET" });
     const nextPreview = await api(`/api/drafts/${encodeURIComponent(id)}/preview`, { body: {} });
     setCurrent(data);
@@ -197,95 +122,112 @@ export default function App() {
     setPickMode(false);
     setSelected(null);
     return data;
-  };
+  }, []);
 
-  const enterDraft = async (id, version = null, { announceLoaded = true } = {}) => {
+  const enterDraft = useCallback(async (id, { announceLoaded = true } = {}) => {
     const hadChat = (chatStore[id] || []).length > 0;
     setActiveKey(id);
-    await loadDraftIntoView(id, version);
-    if (announceLoaded && !hadChat) {
-      pushMessage({ role: "system", text: "已载入草稿，发送消息继续迭代" }, id);
+    try {
+      await loadDraftIntoView(id);
+      if (announceLoaded && !hadChat) {
+        pushMessage({ role: "system", text: "草稿已载入。描述下一步修改，或开启点选模式精确调整元素。" }, id);
+      }
+      await loadDrafts({ quiet: true });
+    } catch (error) {
+      toast.add({ title: "无法打开草稿", description: error.message, type: "error" });
     }
-    setMenuOpen(false);
-    await loadDrafts();
-  };
+  }, [chatStore, loadDraftIntoView, loadDrafts, pushMessage]);
 
-  const newDraft = () => {
+  const newDraft = useCallback(() => {
     setCurrent(null);
     setPreview(null);
     setActiveKey(NEW_KEY);
-    setChatStore((prev) => ({ ...prev, [NEW_KEY]: [welcomeMsg()] }));
+    setChatStore((previous) => ({ ...previous, [NEW_KEY]: [welcomeMessage()] }));
     setPickMode(false);
     setSelected(null);
     setImage(null);
     setStyleId("__default__");
     setText("");
-  };
+  }, []);
 
-  const rollbackVersion = async (v) => {
-    if (!current) return;
-    if (!window.confirm(`确定基于 v${v} 创建一个新的回退版本？历史记录会完整保留。`)) return;
-    await api(`/api/drafts/${encodeURIComponent(current.meta.id)}/rollback`, { body: { v } });
-    await loadDrafts();
-    await enterDraft(current.meta.id, null, { announceLoaded: false });
-  };
+  const confirmRollback = useCallback(async () => {
+    if (!current || rollbackVersion === null) return;
+    const version = rollbackVersion;
+    setRollbackVersion(null);
+    try {
+      await api(`/api/drafts/${encodeURIComponent(current.meta.id)}/rollback`, { body: { v: version } });
+      await loadDrafts({ quiet: true });
+      await enterDraft(current.meta.id, { announceLoaded: false });
+      toast.add({ title: `已基于 v${version} 创建回退版本`, type: "success" });
+    } catch (error) {
+      toast.add({ title: "回退失败", description: error.message, type: "error" });
+    }
+  }, [current, enterDraft, loadDrafts, rollbackVersion]);
 
-  const onPreviewLoad = () => {
+  const onPreviewLoad = useCallback(() => {
     const targetOrigin = preview?.url ? new URL(preview.url).origin : "*";
     previewRef.current?.contentWindow?.postMessage({
       type: "draftly:inspect",
       enabled: pickMode,
       token: preview?.token,
     }, targetOrigin);
-  };
+  }, [pickMode, preview]);
 
-  const send = async () => {
-    const msg = text.trim();
-    if (!msg || sending) return;
+  const send = useCallback(async () => {
+    const message = text.trim();
+    if (!message || sending) return;
+
     if (!current) {
       if (image) {
-        window.alert("截图修改需先有草稿，请先生成或选用一个");
+        toast.add({ title: "请先创建或选择草稿", description: "参考截图用于修改已有草稿。", type: "warning" });
         return;
       }
-      pushMessage({ role: "user", text: msg });
-      const pending = pushMessage({ id: crypto.randomUUID(), role: "assistant", kind: "pending", text: "Pi 正在生成草稿", steps: [] });
+      pushMessage({ role: "user", text: message });
+      const pending = pushMessage({ role: "assistant", kind: "pending", text: "Pi 正在生成草稿", steps: [] });
       setTaskMode("generate");
       setSending(true);
       try {
         const pickedStyle = styleId === "__default__" ? "" : styleId;
         const { drafts: created } = await apiStream(
           "/api/drafts/generate",
-          { prompt: msg, variants: Number(variants), ...(pickedStyle ? { style: pickedStyle } : {}) },
+          { prompt: message, variants: Number(variants), ...(pickedStyle ? { style: pickedStyle } : {}) },
           (event) => updateProgress(pending, event, NEW_KEY),
         );
-        const items = created.map((item, i) => ({ ...item, index: i + 1 }));
-        const isMulti = items.length > 1;
-        const resultText = isMulti ? `✓ 生成 ${items.length} 个方案，点击选用` : `✓ 已生成「${items[0].title}」`;
+        const items = created.map((item, index) => ({ ...item, index: index + 1 }));
+        const multiple = items.length > 1;
+        const resultText = multiple ? `生成了 ${items.length} 个方案，选择一个继续` : `已生成「${items[0].title}」`;
         const finalSteps = progressStepsRef.current.get(pending.id) || [];
-        setChatStore((prev) => {
-          const next = { ...prev };
+        setChatStore((previous) => {
+          const next = { ...previous };
           for (const item of items) {
             next[item.id] = [
-              { role: "user", text: msg },
+              { id: crypto.randomUUID(), role: "user", text: message },
               {
+                id: crypto.randomUUID(),
                 role: "assistant",
                 kind: "generate",
                 text: resultText,
                 steps: finalSteps,
-                variants: isMulti ? items.map((x) => ({ ...x, chosen: x.id === item.id })) : undefined,
+                variants: multiple ? items.map((variant) => ({ ...variant, chosen: variant.id === item.id })) : undefined,
               },
             ];
           }
           return next;
         });
-        replaceMessage(pending, { role: "assistant", kind: "generate", text: resultText, steps: finalSteps, variants: isMulti ? items.map((x) => ({ ...x, chosen: false })) : undefined });
+        replaceMessage(pending, {
+          role: "assistant",
+          kind: "generate",
+          text: resultText,
+          steps: finalSteps,
+          variants: multiple ? items.map((item) => ({ ...item, chosen: false })) : undefined,
+        });
         setText("");
-        await enterDraft(items[0].id, null, { announceLoaded: false });
+        await enterDraft(items[0].id, { announceLoaded: false });
       } catch (error) {
         replaceMessage(pending, {
           role: "assistant",
           kind: "error",
-          text: `✗ 生成失败：${error.message}`,
+          text: `生成失败：${error.message}`,
           steps: progressStepsRef.current.get(pending.id) || [],
         });
       } finally {
@@ -295,12 +237,11 @@ export default function App() {
       return;
     }
 
-    const userMsg = { role: "user", text: msg };
-    if (image) userMsg.image = image;
-    if (selected && !image) userMsg.locator = selected;
-    pushMessage(userMsg);
+    const userMessage = { role: "user", text: message };
+    if (image) userMessage.image = image;
+    if (selected && !image) userMessage.locator = selected;
+    pushMessage(userMessage);
     const pending = pushMessage({
-      id: crypto.randomUUID(),
       role: "assistant",
       kind: "pending",
       text: image ? "Pi 正在按截图修改" : selected ? "Pi 正在修改元素" : "Pi 正在迭代草稿",
@@ -310,72 +251,79 @@ export default function App() {
     setSending(true);
     try {
       let endpoint = `/api/drafts/${encodeURIComponent(current.meta.id)}/iterate`;
-      let body = { instruction: msg };
-      let okPrefix = "✓ 已迭代";
+      let body = { instruction: message };
+      let successText = "已完成迭代";
       if (image) {
         endpoint = `/api/drafts/${encodeURIComponent(current.meta.id)}/edit-by-image`;
-        body = { image, instruction: msg };
-        okPrefix = "✓ 已按截图修改";
+        body = { image, instruction: message };
+        successText = "已按截图完成修改";
       } else if (selected) {
         endpoint = `/api/drafts/${encodeURIComponent(current.meta.id)}/edit-source`;
-        body = { locator: selected, instruction: msg };
-        okPrefix = `✓ 已修改 ${selected.component || `<${selected.tagName}>`}`;
+        body = { locator: selected, instruction: message };
+        successText = `已修改 ${selected.component || `<${selected.tagName}>`}`;
       }
       await apiStream(endpoint, body, (event) => updateProgress(pending, event));
       const next = await loadDraftIntoView(current.meta.id);
       replaceMessage(pending, {
         role: "assistant",
-        text: `${okPrefix}（v${next.version}）`,
+        text: `${successText}（v${next.version}）`,
         steps: progressStepsRef.current.get(pending.id) || [],
       });
       setText("");
       setImage(null);
       setSelected(null);
-      await loadDrafts();
+      await loadDrafts({ quiet: true });
     } catch (error) {
       replaceMessage(pending, {
         role: "assistant",
         kind: "error",
-        text: `✗ 失败：${error.message}`,
+        text: `修改失败：${error.message}`,
         steps: progressStepsRef.current.get(pending.id) || [],
       });
     } finally {
       setSending(false);
       setTaskMode(null);
     }
-  };
+  }, [
+    current,
+    enterDraft,
+    image,
+    loadDraftIntoView,
+    loadDrafts,
+    pushMessage,
+    replaceMessage,
+    selected,
+    sending,
+    styleId,
+    text,
+    updateProgress,
+    variants,
+  ]);
 
   useEffect(() => {
     loadStyles();
     loadDrafts();
-  }, []);
+  }, [loadDrafts, loadStyles]);
 
   useEffect(() => {
-    const onPaste = (e) => {
-      const items = e.clipboardData?.items || [];
-      for (const item of items) {
-        if (!item.type.startsWith("image/")) continue;
-        const blob = item.getAsFile();
-        if (!blob) continue;
-        const reader = new FileReader();
-        reader.onload = () => setImage(reader.result);
-        reader.readAsDataURL(blob);
-        e.preventDefault();
-        break;
+    const onPaste = (event) => {
+      const item = [...(event.clipboardData?.items || [])].find((candidate) => candidate.type.startsWith("image/"));
+      if (!item) return;
+      if (!current) {
+        toast.add({ title: "请先创建或选择草稿", description: "截图可作为已有草稿的修改参考。", type: "warning" });
+        return;
       }
+      readImage(item.getAsFile(), setImage);
+      event.preventDefault();
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, []);
+  }, [current]);
 
   useEffect(() => {
     if (!preview) return;
-    previewRef.current?.contentWindow?.postMessage({
-      type: "draftly:inspect",
-      enabled: pickMode,
-      token: preview.token,
-    }, new URL(preview.url).origin);
-  }, [pickMode, preview]);
+    onPreviewLoad();
+  }, [onPreviewLoad, preview]);
 
   useEffect(() => {
     const onMessage = (event) => {
@@ -392,238 +340,90 @@ export default function App() {
           ...value,
           source: { file: source.file, content: source.source },
         } : value))
-        .catch((error) => console.error("Failed to load selected source", error));
+        .catch((error) => toast.add({ title: "无法载入所选源码", description: error.message, type: "error" }));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [preview, pickMode, current?.meta?.id]);
-
-  const versions = current?.meta?.versions?.slice().reverse() || [];
-  const sendingLabel = {
-    generate: "生成中",
-    image: "按截图修改中",
-    source: "修改元素中",
-    iterate: "迭代中",
-  }[taskMode] || "处理中";
+  }, [current?.meta?.id, onPreviewLoad, preview?.token]);
 
   return (
-    <div className="app-root">
-      <header id="topbar">
-        <div className="brand">draftly <span className="tag">设计草稿</span></div>
-        <div className="dropdown">
-          <Button variant="outline" disabled={sending} onClick={() => setMenuOpen((v) => !v)}>草稿：{current?.meta?.title || "未选择"} ▾</Button>
-          {menuOpen ? (
-            <div className="dropdown-menu">
-              {!drafts.length ? <div className="dropdown-empty">还没有草稿</div> : drafts.map((d) => (
-                <div
-                  key={d.id}
-                  className={`dropdown-item ${current?.meta?.id === d.id ? "active" : ""}`}
-                  onClick={() => d.format === "html-legacy"
-                    ? window.alert("这是旧 HTML 草稿，请先运行 npm run migrate:drafts")
-                    : enterDraft(d.id)}
-                >
-                  <div className="di-title">{d.title}</div>
-                  <div className="di-sub">
-                    {d.format === "html-legacy" ? "待迁移" : `v${d.versions.length}`} · {new Date(d.createdAt).toLocaleString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-        <Button disabled={sending} onClick={newDraft}>+ 新草稿</Button>
-        <div className="spacer" />
-        <Button variant="outline" disabled={!current} onClick={() => setHistoryOpen(true)}>历史</Button>
-      </header>
+    <TooltipProvider>
+      <div className="app-root">
+        <AppHeader
+          current={current}
+          draftGroups={draftGroups}
+          sending={sending}
+          onSelectDraft={enterDraft}
+          onNewDraft={newDraft}
+          onHistory={() => setHistoryOpen(true)}
+          onLegacyDraft={() => toast.add({
+            title: "这是旧版 HTML 草稿",
+            description: "请先运行 npm run migrate:drafts 完成迁移。",
+            type: "warning",
+          })}
+        />
+        <main id="workspace-main" className="workspace-layout">
+          <PreviewStage
+            current={current}
+            preview={preview}
+            previewRef={previewRef}
+            sending={sending}
+            variantCount={variants}
+            pickMode={pickMode}
+            selected={selected}
+            onPreviewLoad={onPreviewLoad}
+            onTogglePick={() => setPickMode((value) => !value)}
+            onOpenSource={() => setSourceOpen(true)}
+            onNewDraft={newDraft}
+          />
+          <ConversationPanel
+            current={current}
+            messages={messages}
+            sending={sending}
+            sendingLabel={sendingLabel}
+            text={text}
+            image={image}
+            selected={selected}
+            styleId={styleId}
+            styles={styles}
+            variants={variants}
+            fileRef={fileRef}
+            chatEndRef={chatEndRef}
+            onTextChange={setText}
+            onStyleChange={setStyleId}
+            onVariantsChange={setVariants}
+            onRemoveImage={() => setImage(null)}
+            onRemoveSelected={() => setSelected(null)}
+            onSend={send}
+            onSelectVariant={enterDraft}
+          />
+        </main>
 
-      <main id="layout">
-        <section id="preview-pane">
-          {current ? (
-            <div id="stage-view">
-              <div id="stage-bar">
-                <div className="stage-meta">
-                  <div id="stage-title">{current.meta.title}</div>
-                  <div id="stage-sub" className="hint">{current.meta.prompt} · v{current.version}</div>
-                </div>
-                <div className="stage-actions">
-                  <Button variant={pickMode ? "default" : "outline"} onClick={() => setPickMode((v) => !v)}>点选修改</Button>
-                  <Button variant="outline" onClick={() => window.open(`/api/drafts/${encodeURIComponent(current.meta.id)}/export`, "_blank")}>导出源码 ZIP</Button>
-                  <Button variant="outline" onClick={() => setSourceOpen(true)}>查看源码</Button>
-                </div>
-              </div>
-              <iframe
-                ref={previewRef}
-                id="preview"
-                title="draft preview"
-                src={preview?.url}
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                onLoad={onPreviewLoad}
-              />
-            </div>
-          ) : sending ? <GenerationPlaceholder variantCount={variants} /> : null}
-        </section>
+        <input
+          ref={fileRef}
+          hidden
+          type="file"
+          accept="image/*"
+          onChange={(event) => {
+            readImage(event.target.files?.[0], setImage);
+            event.target.value = "";
+          }}
+        />
 
-        <aside id="chat-pane">
-          <div id="chat-header">
-            <span className="chat-header-title">对话</span>
-            <span id="chat-header-sub" className="hint">
-              {sending ? sendingLabel : current ? `${current.meta.title} · v${current.version}` : ""}
-            </span>
-          </div>
-          <div id="chat-messages">
-            {messages.map((m, idx) => (
-              <div key={idx} className={`msg-row ${m.role}`}>
-                {m.role === "system" ? <div className="msg-system">{m.text}</div> : null}
-                {m.role === "user" ? (
-                  <div className="bubble">
-                    {m.image ? <img className="msg-thumb" src={m.image} alt="参考截图" /> : null}
-                    {m.locator ? <div className="msg-tag">🎯 {m.locator.component || m.locator.tagName} · {m.locator.file}:{m.locator.line}</div> : null}
-                    {m.text}
-                  </div>
-                ) : null}
-                {m.role === "assistant" ? (
-                  <div className={`bubble ${m.kind === "error" ? "bubble-error" : ""}`}>
-                    {m.kind === "pending" ? (
-                      <div className="task-state">
-                        <Spinner />
-                        <span>{m.text}</span>
-                        <Badge variant="secondary">运行中</Badge>
-                      </div>
-                    ) : <div>{m.text}</div>}
-                    {m.steps?.length ? (
-                      <div className="progress-list">
-                        {groupProgressSteps(m.steps).map(([variant, steps]) => (
-                          <div className="progress-group" key={variant}>
-                            {variant ? <div className="progress-group-title">方案 {variant}</div> : null}
-                            {steps.filter((step) => !step.parent).map((step) => {
-                              const children = steps.filter((child) => child.parent === step.key);
-                              return (
-                                <div className="progress-phase-block" key={step.key}>
-                                  <div className={`progress-step progress-phase ${step.status}`}>
-                                    <span className="progress-icon">{step.status === "done" ? "✓" : <span className="progress-dot" />}</span>
-                                    <span className="progress-label">{step.label}</span>
-                                    {step.detail ? <span className="progress-detail">{step.detail}</span> : null}
-                                  </div>
-                                  {children.length ? (
-                                    <div className="progress-children">
-                                      {children.map((child) => (
-                                        <div key={child.key} className={`progress-step progress-child ${child.status}`}>
-                                          <span className="progress-icon">{child.status === "done" ? "✓" : <span className="progress-dot" />}</span>
-                                          <span className="progress-label">{child.label}</span>
-                                          {child.detail ? <span className="progress-detail">{child.detail}</span> : null}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                    {m.variants?.length ? (
-                      <div className="variant-list">
-                        {m.variants.map((v) => (
-                          <Button key={v.id} variant={v.chosen ? "default" : "outline"} className="variant-card" onClick={() => enterDraft(v.id)}>
-                            方案 {v.index} · {v.title}
-                          </Button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-            <div ref={chatEndRef} />
-          </div>
-
-          <div id="chat-input">
-            <div id="chips-row">
-              {image ? <Badge variant="secondary">📎 截图已附</Badge> : null}
-              {selected ? <Badge variant="outline">🎯 {selected.component || selected.tagName} · {selected.file}:{selected.line}</Badge> : null}
-            </div>
-            <Textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              placeholder="描述你想要的页面，或输入修改指令…（Enter 发送，Shift+Enter 换行）"
-              disabled={sending}
-              className="chat-textarea"
-            />
-            <div className="input-row">
-              <Button variant="outline" disabled={sending} onClick={() => fileRef.current?.click()}>📎</Button>
-              {!current ? (
-                <>
-                  <Select value={styleId} disabled={sending} onValueChange={setStyleId}>
-                    <SelectTrigger className="gen-opt"><SelectValue placeholder="默认风格" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="__default__">默认风格</SelectItem>
-                        {styles.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                  <Select value={variants} disabled={sending} onValueChange={setVariants}>
-                    <SelectTrigger className="gen-opt"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="1">1 个方案</SelectItem>
-                        <SelectItem value="2">2 个方案</SelectItem>
-                        <SelectItem value="3">3 个方案</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </>
-              ) : null}
-              <Button disabled={sending || !text.trim()} aria-busy={sending} onClick={send}>
-                {sending ? <Spinner data-icon="inline-start" /> : null}
-                {sending ? sendingLabel : "发送 ↑"}
-              </Button>
-            </div>
-          </div>
-        </aside>
-      </main>
-
-      <input
-        ref={fileRef}
-        hidden
-        type="file"
-        accept="image/*"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => setImage(reader.result);
-          reader.readAsDataURL(file);
-        }}
-      />
-
-      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-        <SheetContent side="right">
-          <SheetHeader>
-            <SheetTitle>版本历史</SheetTitle>
-          </SheetHeader>
-          <div className="version-list">
-            {versions.map((ver) => (
-              <div key={ver.v} className={`version-item ${ver.v === current?.version ? "active" : ""}`}>
-                <div className="version-head">
-                  <span>v{ver.v}</span>
-                  {ver.v !== current?.version ? <Button size="sm" variant="outline" onClick={() => rollbackVersion(ver.v)}>回退</Button> : null}
-                </div>
-                <div className="version-sub">{ver.instruction || new Date(ver.at).toLocaleString()}</div>
-              </div>
-            ))}
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      <Dialog open={sourceOpen} onOpenChange={setSourceOpen}>
-        <DialogContent className="source-dialog">
-          <DialogHeader><DialogTitle>React 源码 · {current?.source?.file || "src/App.tsx"}</DialogTitle></DialogHeader>
-          <pre id="source-view">{current?.source?.content || "未找到默认入口源码"}</pre>
-        </DialogContent>
-      </Dialog>
-    </div>
+        <AppOverlays
+          current={current}
+          versions={versions}
+          historyOpen={historyOpen}
+          sourceOpen={sourceOpen}
+          rollbackVersion={rollbackVersion}
+          onHistoryChange={setHistoryOpen}
+          onSourceChange={setSourceOpen}
+          onRollbackRequest={setRollbackVersion}
+          onRollbackCancel={() => setRollbackVersion(null)}
+          onRollbackConfirm={confirmRollback}
+        />
+        <Toaster />
+      </div>
+    </TooltipProvider>
   );
 }
