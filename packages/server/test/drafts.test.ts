@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DraftStore } from '../src/drafts.js';
+import { ProjectStore } from '../src/projects.js';
 import {
   editDraftByImage,
   editDraftSource,
@@ -95,8 +96,15 @@ test('DraftStore creates an isolated React project and commits monotonic Git ver
   const draft = await store.createProject({ prompt: '做一个产品页' });
   assert.equal(draft.format, 'vite-react');
   assert.equal(draft.schemaVersion, 2);
+  assert.equal(draft.templateVersion, 2);
   assert.equal((await store.meta(draft.id)).versions.length, 0);
   assert.match(await fs.readFile(path.join(store.projectDir(draft.id), 'vite.config.ts'), 'utf8'), /locatorJsx/);
+  const registry = JSON.parse(
+    await fs.readFile(path.join(store.projectDir(draft.id), 'component-registry.json'), 'utf8'),
+  ) as { components: Array<{ name: string; import: string }> };
+  assert.ok(registry.components.some(
+    (component) => component.name === 'Field' && component.import === '@/components/ui/field',
+  ));
 
   const first = await store.runVersionTransaction(
     draft.id,
@@ -134,6 +142,113 @@ test('DraftStore creates an isolated React project and commits monotonic Git ver
   await assert.rejects(() => store.meta('../escape'), /draft not found/);
 });
 
+test('ProjectStore persists explicit draft relationships and migrates unowned drafts once', async () => {
+  const store = createStore('project-store-drafts');
+  const first = await store.createProject({ prompt: '第一个已有草稿' });
+  const projectsRoot = path.join(temporaryRoot, 'project-store-projects');
+  const projects = new ProjectStore({ rootDir: projectsRoot, drafts: store });
+
+  const migrated = await projects.list();
+  assert.equal(migrated.length, 1);
+  assert.deepEqual(migrated[0].draftIds, [first.id]);
+  assert.equal((await store.meta(first.id)).projectId, migrated[0].id);
+
+  const project = await projects.create({
+    prompt: '为本地开发者设计一个发布页',
+    design: {
+      source: 'import',
+      name: 'Local system',
+      templateId: null,
+      content: [
+        '---',
+        'name: local-system',
+        'colors:',
+        '  background: "#ffffff"',
+        '  surface: "#f7f7f5"',
+        '  primary: "#347b69"',
+        '  text: "#20201f"',
+        '  muted: "#71716d"',
+        '  border: "#deded8"',
+        'typography:',
+        '  fontFamily: Geist',
+        '  scale:',
+        '    body: 16px',
+        'spacing:',
+        '  unit: 8px',
+        'radius:',
+        '  md: 12px',
+        '---',
+        '',
+        '# Local',
+      ].join('\n'),
+    },
+  });
+  const draft = await store.createProject({ prompt: project.prompt, designMd: project.design.content });
+  const linked = await projects.addDrafts(project.id, [draft.id]);
+  assert.equal(linked.activeDraftId, draft.id);
+  assert.equal((await store.meta(draft.id)).projectId, project.id);
+
+  const reloaded = new ProjectStore({ rootDir: projectsRoot, drafts: store });
+  assert.equal((await reloaded.meta(project.id)).design.name, 'Local system');
+  assert.equal((await reloaded.list()).length, 2);
+
+  const legacyId = 'legacy-unmigrated';
+  await fs.mkdir(path.join(store.rootDir, legacyId));
+  await fs.writeFile(path.join(store.rootDir, legacyId, 'meta.json'), JSON.stringify({
+    id: legacyId,
+    title: '旧 HTML',
+    prompt: '旧页面',
+    format: 'html-legacy',
+    createdAt: '2025-01-01T00:00:00.000Z',
+    versions: [],
+  }));
+  await fs.writeFile(path.join(projectsRoot, `project-${legacyId}.json`), JSON.stringify({
+    id: `project-${legacyId}`,
+    title: '旧 HTML',
+    prompt: '旧页面',
+    design: {
+      source: 'default',
+      name: 'Draftly Default',
+      templateId: null,
+      content: project.design.content,
+    },
+    draftIds: [legacyId],
+    activeDraftId: legacyId,
+    createdAt: '2025-01-01T00:00:00.000Z',
+    updatedAt: '2025-01-01T00:00:00.000Z',
+  }));
+  const withoutLegacy = new ProjectStore({ rootDir: projectsRoot, drafts: store });
+  assert.equal((await withoutLegacy.list()).some((item) => item.id === `project-${legacyId}`), false);
+});
+
+test('DraftStore lists readable project files and excludes generated or unsafe paths', async () => {
+  const store = createStore('file-list');
+  const draft = await store.createProject({ prompt: '浏览项目源码' });
+  const project = store.projectDir(draft.id);
+  await fs.mkdir(path.join(project, 'src/assets'), { recursive: true });
+  await fs.writeFile(path.join(project, 'src/assets/logo.svg'), '<svg />');
+  await fs.writeFile(path.join(project, 'src/assets/image.png'), 'not-an-image');
+  await fs.writeFile(path.join(project, '.env.local'), 'SECRET=hidden');
+  await fs.mkdir(path.join(project, 'dist'), { recursive: true });
+  await fs.writeFile(path.join(project, 'dist/generated.js'), 'generated');
+  const outside = path.join(temporaryRoot, 'outside-source.ts');
+  await fs.writeFile(outside, 'export const secret = true;');
+  await fs.symlink(outside, path.join(project, 'src/linked.ts'));
+
+  const { files } = await store.listSourceFiles(draft.id);
+  const paths = files.map((file) => file.path);
+  assert.ok(paths.includes('src/App.tsx'));
+  assert.ok(paths.includes('src/assets/logo.svg'));
+  assert.ok(paths.includes('package.json'));
+  assert.ok(!paths.includes('src/assets/image.png'));
+  assert.ok(!paths.includes('.env.local'));
+  assert.ok(!paths.includes('dist/generated.js'));
+  assert.ok(!paths.includes('src/linked.ts'));
+  assert.deepEqual(await store.readSource(draft.id, 'src/assets/logo.svg').then((item) => item.source), '<svg />');
+  await assert.rejects(() => store.readSource(draft.id, 'dist/generated.js'), /invalid draft path/);
+  await assert.rejects(() => store.readSource(draft.id, '.env.local'), /invalid draft path/);
+});
+
 test('source locator resolves selected JSX, imports, and owning component', async () => {
   const store = createStore('locator');
   const draft = await store.createProject({ prompt: 'locator' });
@@ -143,7 +258,7 @@ test('source locator resolves selected JSX, imports, and owning component', asyn
   assert.equal(context.file, 'src/App.tsx');
   assert.equal(context.component, 'App');
   assert.match(context.selectedSource, /^<h1/);
-  assert.match(context.context, /import \{ ArrowRight \}/);
+  assert.match(context.context, /import \{ ArrowUpRight, Check, Layers3/);
   assert.match(context.context, /Owning component/);
 });
 
@@ -231,6 +346,7 @@ test('HTTP source API streams progress, serves preview metadata, exports ZIP, an
     editorDir,
     previewManager,
   });
+
   const post = (url: string, body: unknown) => app.request(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -293,6 +409,75 @@ test('HTTP source API streams progress, serves preview metadata, exports ZIP, an
     const bytes = new Uint8Array(await exported.arrayBuffer());
     assert.deepEqual([...bytes.slice(0, 2)], [0x50, 0x4b]);
   }
+});
+
+test('project API creates linked variants and validates imported DESIGN.md', async () => {
+  const store = createStore('project-http-drafts');
+  const projects = new ProjectStore({
+    rootDir: path.join(temporaryRoot, 'project-http-projects'),
+    drafts: store,
+  });
+  const executor = new FakeWorkspaceExecutor();
+  const editorDir = path.join(temporaryRoot, 'project-editor');
+  await fs.mkdir(editorDir, { recursive: true });
+  await fs.writeFile(path.join(editorDir, 'index.html'), '<div id="root"></div>');
+  const { app } = createApiApp({
+    provider: executor,
+    drafts: store,
+    projects,
+    editorDir,
+    previewManager: {
+      async ensure() {
+        return { url: 'http://127.0.0.1:59999/', token: 'preview-token', status: 'ready' };
+      },
+      async shutdown() {},
+    },
+  });
+
+  const invalid = await app.request('/api/projects/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: '项目', designMd: '# missing frontmatter' }),
+  });
+  assert.equal(invalid.status, 400);
+  assert.deepEqual((await invalid.json() as { errors: string[] }).errors, [
+    '缺少 YAML front matter（--- 包裹）',
+  ]);
+
+  const generated = await app.request('/api/projects/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: '项目工作区', variants: 2, templateId: 'vercel' }),
+  });
+  assert.equal(generated.status, 200);
+  const result = await generated.json() as {
+    project: { id: string; variantCount: number; activeDraftId: string; design: { name: string } };
+    drafts: Array<{ id: string }>;
+  };
+  assert.equal(result.project.variantCount, 2);
+  assert.equal(result.project.design.name, 'Vercel');
+  assert.equal(result.drafts.length, 2);
+  assert.equal(result.project.activeDraftId, result.drafts[0].id);
+  assert.deepEqual(
+    await Promise.all(result.drafts.map(async (draft) => (await store.meta(draft.id)).projectId)),
+    [result.project.id, result.project.id],
+  );
+
+  const list = await app.request('/api/projects');
+  const listed = await list.json() as { projects: Array<{ id: string; variantCount: number }> };
+  assert.deepEqual(listed.projects.map((project) => project.id), [result.project.id]);
+  assert.equal(listed.projects[0].variantCount, 2);
+
+  const switched = await app.request(`/api/projects/${result.project.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ activeDraftId: result.drafts[1].id }),
+  });
+  assert.equal(switched.status, 200);
+  assert.equal(
+    (await switched.json() as { project: { activeDraftId: string } }).project.activeDraftId,
+    result.drafts[1].id,
+  );
 });
 
 test('legacy migration is idempotent, preserves backups, and creates a React Git project', async () => {

@@ -17,66 +17,92 @@ export function serializeDesignMd(meta, body) {
   return `---\n${yaml}---\n\n${(body || '').trim()}\n`;
 }
 
-/** 生成默认 DESIGN.md 全文（浅色低饱和基调，可在生成时被覆盖） */
+/** 生成默认 DESIGN.md 全文（可在生成时被风格预设覆盖） */
 export function defaultDesignMd(overrides = {}) {
   const base = {
     name: 'default-theme',
     colors: {
-      background: '#f7f7f5',
+      background: '#f4f1ea',
       surface: '#ffffff',
-      primary: '#3f4a5a',
-      text: '#2e2e2c',
-      muted: '#6a6a64',
-      border: '#e6e6e1',
-      accent: '#8fa3b8',
-      destructive: '#b4544a',
+      primary: '#347b69',
+      text: '#272521',
+      muted: '#716d64',
+      border: '#ded9cf',
+      accent: '#dceae4',
+      destructive: '#b65045',
     },
     typography: {
-      fontFamily: '-apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
-      scale: { h1: '32px', h2: '24px', h3: '18px', body: '14px', small: '13px' },
+      fontFamily: '"Geist Variable", "PingFang SC", "Microsoft YaHei", sans-serif',
+      scale: { h1: '56px', h2: '36px', h3: '22px', body: '16px', small: '13px' },
     },
-    spacing: { unit: '8px', scale: ['4px', '8px', '16px', '24px', '40px'] },
-    radius: { sm: '8px', md: '12px', full: '999px' },
-    shadows: { sm: '0 1px 2px rgba(0,0,0,0.06)', md: '0 4px 12px rgba(0,0,0,0.08)', lg: '0 12px 32px rgba(0,0,0,0.12)' },
-    motion: { duration: '150ms', easing: 'cubic-bezier(0.4, 0, 0.2, 1)' },
+    spacing: { unit: '8px', scale: ['4px', '8px', '16px', '24px', '40px', '64px', '96px'] },
+    radius: { sm: '8px', md: '14px', full: '999px' },
+    shadows: {
+      sm: '0 1px 2px rgba(39,37,33,0.06)',
+      md: '0 14px 34px rgba(39,37,33,0.09)',
+      lg: '0 30px 70px rgba(39,37,33,0.13)',
+    },
+    motion: { duration: '220ms', easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
     components: {
       Button: { radius: 'md', primaryVariant: 'default' },
-      Card: { surface: 'surface', border: 'border', shadow: 'sm' },
+      Card: { surface: 'surface', border: 'optional', shadow: 'contextual' },
     },
-    antiPatterns: ['no-blue-purple-gradient', 'no-one-off-hex-colors', 'no-inline-px-outside-scale'],
+    antiPatterns: [
+      'no-blue-purple-gradient',
+      'no-one-off-hex-colors',
+      'no-three-equal-card-row',
+      'no-everything-centered',
+      'no-placeholder-copy',
+      'no-layout-property-animation',
+    ],
   };
   const meta = deepMerge(base, overrides);
   const body = `# DESIGN.md — ${meta.name}
 
 ## 设计原则
-- 浅色、低饱和、留白充分；不使用蓝紫渐变。
-- 颜色一律使用 colors token；字号使用 typography.scale；间距为 spacing.unit 的倍数。
-- 组件优先取自 component-registry，不要手写一次性样式。
+- 先从产品目标、内容密度和用户任务推导布局，不套用固定营销页模板。
+- 严格使用 colors、typography、spacing、radius、shadows 与 motion token；不要散落一次性值。
+- 优先组合项目内的 shadcn/ui 组件。只有现有 primitive 无法表达时才创建产品组件。
+- 页面必须有清晰的一读层级和至少一个克制的二读细节，避免所有区域同权、同宽、同圆角。
 
 ## 颜色（colors）
 - primary 用于主要行动点（主按钮、链接、强调）；background/surface 区分页面与卡片底色。
-- muted 用于次要文本；destructive 仅用于危险操作。
+- muted 用于次要文本；destructive 仅用于错误与危险操作。单页只保留一个主强调色。
+- 所有中性色保持一致色温，阴影也应继承 text/background 的色相，不使用通用纯黑阴影。
 
 ## 字体（typography）
 - 全局字体 fontFamily；标题用 typography.scale 的 h1–h3，正文 body，辅助信息 small。
+- 大标题收紧字距与行高并使用 text-wrap: balance；正文宽度控制在约 65 个字符并使用 text-wrap: pretty。
+- 数据、版本号和时间使用等宽字体或 tabular-nums。
 
 ## 间距与圆角（spacing / radius）
 - 所有 margin/padding 取 spacing.scale 中的值（unit 的倍数）。
-- 卡片/输入框圆角 radius.md，胶囊元素 radius.full。
+- 外层容器、卡片和内部控件采用不同圆角层级；不要让每个元素都变成胶囊。
+- 页面使用明确的 max-width；桌面与移动端都需要单独校准留白和信息顺序。
 
 ## 阴影与动效（shadows / motion）
-- 浮层用 shadows.md/sm，弹窗用 shadows.lg；避免厚重投影。
-- 过渡统一 motion.duration + motion.easing，不做花哨动画。
+- 只有需要表达层级时才使用阴影；普通内容优先靠背景、留白或单侧分隔建立层次。
+- hover、press、focus、面板进入和列表加载使用 motion.duration + motion.easing。
+- 动画只改变 transform 与 opacity，并为 prefers-reduced-motion 提供静态退化。
 
 ## 组件约定（components）
-- Button 主行动用 primaryVariant；Card 使用 surface + border + shadows.sm。
+- Button 使用内置 variant/size；图标按钮必须有可访问名称，图标放在文字前后时使用 data-icon。
+- 表单使用 Field/FieldGroup，反馈使用 Alert，空状态使用 Empty，加载使用 Skeleton。
+- Dialog/Sheet 必须有 Title；选择项必须位于对应 Group 中；不要用原生 alert/confirm。
+- Card 只用于确实需要分组或抬升的内容，并使用完整的 Header/Content/Footer 组合。
 
 ## 反模式（antiPatterns）
 ${meta.antiPatterns.map((a) => `- ${a}`).join('\n')}
 
 ## 布局约定
-- 页面容器 max-width 720–1100px，居中，padding 40px。
-- 卡片表面色 surface，圆角 radius.md，细边框 border。`;
+- 使用 1200–1440px 的内容容器，并根据产品类型选择不对称网格、主次分栏或编辑式留白。
+- 禁止默认采用“三张等宽卡片 + 居中标题”；内容差异必须反映在尺寸、位置或层级上。
+- 使用 CSS Grid 处理主布局，避免复杂百分比 flex 计算；全屏区域使用 min-height: 100dvh。
+
+## 内容与状态
+- 使用用户语言编写真实、具体的产品文案，不使用 Lorem Ipsum、John Doe 或泛化 AI 营销词。
+- 实现 hover、active、focus-visible、disabled、loading、empty 与 error 状态；错误直接说明发生了什么和下一步。
+- 所有页面提供可理解的返回/退出路径，交互控件支持键盘操作，图片包含有效 alt。`;
   return serializeDesignMd(meta, body);
 }
 

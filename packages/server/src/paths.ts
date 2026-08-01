@@ -11,3 +11,9 @@ export function resolveDraftsDir(
 ): string {
   return path.resolve(PROJECT_ROOT, configuredPath);
 }
+
+export function resolveProjectsDir(
+  configuredPath = process.env.DRAFTLY_PROJECTS_DIR || '.draftly/projects',
+): string {
+  return path.resolve(PROJECT_ROOT, configuredPath);
+}

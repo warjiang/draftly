@@ -80,7 +80,13 @@ function placeOverlay(element: Element | null) {
 }
 
 window.addEventListener("message", (event) => {
-  if (event.source !== window.parent || event.data?.type !== "draftly:inspect") return
+  if (event.source !== window.parent) return
+  if (event.data?.type === "draftly:navigate") {
+    if (event.data.action === "back") window.history.back()
+    if (event.data.action === "forward") window.history.forward()
+    return
+  }
+  if (event.data?.type !== "draftly:inspect") return
   enabled = Boolean(event.data.enabled)
   token = String(event.data.token || "")
   parentOrigin = event.origin

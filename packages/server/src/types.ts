@@ -84,6 +84,7 @@ export type DraftVersion = {
 
 export type DraftMeta = {
   id: string;
+  projectId?: string;
   title: string;
   prompt: string;
   format: string;
@@ -100,6 +101,26 @@ export type DraftMeta = {
     sourceVersion?: number;
     legacyBackup?: string;
   };
+};
+
+export type ProjectDesignSource = 'default' | 'template' | 'import';
+
+export type ProjectDesign = {
+  source: ProjectDesignSource;
+  name: string;
+  templateId: string | null;
+  content: string;
+};
+
+export type ProjectMeta = {
+  id: string;
+  title: string;
+  prompt: string;
+  design: ProjectDesign;
+  draftIds: string[];
+  activeDraftId: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type SourceLocator = {
