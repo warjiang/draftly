@@ -11,6 +11,7 @@ import { mergeProgressStep } from "@/lib/progress";
 import "./App.css";
 
 const NEW_KEY = "__new__";
+const EMPTY_DESIGN = { status: "idle", data: null, error: null };
 
 function welcomeMessage() {
   return {
@@ -31,6 +32,9 @@ export default function App() {
   const [drafts, setDrafts] = useState([]);
   const [current, setCurrent] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [draftDesign, setDraftDesign] = useState(EMPTY_DESIGN);
+  const [styleDesign, setStyleDesign] = useState(EMPTY_DESIGN);
+  const [stageView, setStageView] = useState("preview");
   const [activeKey, setActiveKey] = useState(NEW_KEY);
   const [chatStore, setChatStore] = useState({ [NEW_KEY]: [welcomeMessage()] });
   const [pickMode, setPickMode] = useState(false);
@@ -42,6 +46,7 @@ export default function App() {
   const [sourceOpen, setSourceOpen] = useState(false);
   const [rollbackVersion, setRollbackVersion] = useState(null);
   const [styleId, setStyleId] = useState("__default__");
+  const [styleRetry, setStyleRetry] = useState(0);
   const [styles, setStyles] = useState([]);
   const [variants, setVariants] = useState("3");
   const [text, setText] = useState("");
@@ -49,6 +54,7 @@ export default function App() {
   const fileRef = useRef(null);
   const chatEndRef = useRef(null);
   const progressStepsRef = useRef(new Map());
+  const styleCacheRef = useRef(new Map());
 
   const messages = useMemo(() => chatStore[activeKey] || [], [chatStore, activeKey]);
   const draftGroups = useMemo(() => groupDraftsByProject(drafts), [drafts]);
@@ -115,12 +121,22 @@ export default function App() {
   }, []);
 
   const loadDraftIntoView = useCallback(async (id) => {
-    const data = await api(`/api/drafts/${encodeURIComponent(id)}`, { method: "GET" });
-    const nextPreview = await api(`/api/drafts/${encodeURIComponent(id)}/preview`, { body: {} });
+    setDraftDesign({ status: "loading", data: null, error: null });
+    const designRequest = api(`/api/drafts/${encodeURIComponent(id)}/design`, { method: "GET" })
+      .then((data) => ({ data, error: null }))
+      .catch((error) => ({ data: null, error }));
+    const [data, nextPreview] = await Promise.all([
+      api(`/api/drafts/${encodeURIComponent(id)}`, { method: "GET" }),
+      api(`/api/drafts/${encodeURIComponent(id)}/preview`, { body: {} }),
+    ]);
     setCurrent(data);
     setPreview(nextPreview);
     setPickMode(false);
     setSelected(null);
+    const designResult = await designRequest;
+    setDraftDesign(designResult.error
+      ? { status: "error", data: null, error: designResult.error.message }
+      : { status: "ready", data: designResult.data, error: null });
     return data;
   }, []);
 
@@ -141,6 +157,9 @@ export default function App() {
   const newDraft = useCallback(() => {
     setCurrent(null);
     setPreview(null);
+    setDraftDesign(EMPTY_DESIGN);
+    setStyleDesign(EMPTY_DESIGN);
+    setStageView("preview");
     setActiveKey(NEW_KEY);
     setChatStore((previous) => ({ ...previous, [NEW_KEY]: [welcomeMessage()] }));
     setPickMode(false);
@@ -306,6 +325,47 @@ export default function App() {
   }, [loadDrafts, loadStyles]);
 
   useEffect(() => {
+    setStageView("preview");
+  }, [current?.meta?.id, styleId]);
+
+  useEffect(() => {
+    if (current || styleId === "__default__") {
+      setStyleDesign(EMPTY_DESIGN);
+      return undefined;
+    }
+    const cached = styleCacheRef.current.get(styleId);
+    if (cached) {
+      setStyleDesign({ status: "ready", data: cached, error: null });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setStyleDesign({ status: "loading", data: null, error: null });
+    api(`/api/templates/${encodeURIComponent(styleId)}`, {
+      method: "GET",
+      signal: controller.signal,
+    }).then((data) => {
+      styleCacheRef.current.set(styleId, data);
+      setStyleDesign({ status: "ready", data, error: null });
+    }).catch((error) => {
+      if (error.name === "AbortError") return;
+      setStyleDesign({ status: "error", data: null, error: error.message });
+    });
+    return () => controller.abort();
+  }, [current, styleId, styleRetry]);
+
+  const copyDesign = useCallback(async () => {
+    const content = current ? draftDesign.data?.content : styleDesign.data?.designMd;
+    if (!content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      toast.add({ title: "已复制 DESIGN.md", type: "success" });
+    } catch (error) {
+      toast.add({ title: "复制失败", description: error.message, type: "error" });
+    }
+  }, [current, draftDesign.data?.content, styleDesign.data?.designMd]);
+
+  useEffect(() => {
     const onPaste = (event) => {
       const item = [...(event.clipboardData?.items || [])].find((candidate) => candidate.type.startsWith("image/"));
       if (!item) return;
@@ -366,12 +426,19 @@ export default function App() {
           <PreviewStage
             current={current}
             preview={preview}
+            draftDesign={draftDesign}
+            styleDesign={styleDesign}
+            styleId={styleId}
+            stageView={stageView}
             previewRef={previewRef}
             sending={sending}
             variantCount={variants}
             pickMode={pickMode}
             selected={selected}
             onPreviewLoad={onPreviewLoad}
+            onStageViewChange={setStageView}
+            onCopyDesign={copyDesign}
+            onRetryStyle={() => setStyleRetry((value) => value + 1)}
             onTogglePick={() => setPickMode((value) => !value)}
             onOpenSource={() => setSourceOpen(true)}
             onNewDraft={newDraft}

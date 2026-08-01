@@ -1,9 +1,11 @@
 export async function api(path, opts = {}) {
-  const response = await fetch(path, opts.body !== undefined ? {
-    method: opts.method || "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(opts.body),
-  } : undefined);
+  const hasBody = opts.body !== undefined;
+  const response = await fetch(path, {
+    method: opts.method || (hasBody ? "POST" : "GET"),
+    headers: hasBody ? { "Content-Type": "application/json" } : undefined,
+    body: hasBody ? JSON.stringify(opts.body) : undefined,
+    signal: opts.signal,
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `${response.status}`);
   return data;

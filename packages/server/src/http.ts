@@ -6,6 +6,7 @@ import archiver from 'archiver';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
+import { parseDesignMd } from '../../shared/src/design-md.js';
 import {
   editDraftByImage,
   editDraftSource,
@@ -116,6 +117,17 @@ export function createApiApp({
     ));
   });
 
+  app.get('/api/drafts/:id/files', async (c) =>
+    json(c, await drafts.listSourceFiles(c.req.param('id'))));
+
+  app.get('/api/drafts/:id/design', async (c) => {
+    const content = await drafts.readDesign(c.req.param('id'));
+    return json(c, {
+      content,
+      meta: content ? parseDesignMd(content).meta : null,
+    });
+  });
+
   app.post('/api/drafts/:id/preview', async (c) =>
     json(c, await previews.ensure(c.req.param('id'))));
 
@@ -202,7 +214,10 @@ export function createApiApp({
     const id = c.req.param('id');
     const template = await getTemplate(id);
     if (!template) return json(c, { error: `unknown template: ${id}` }, 404);
-    return json(c, template);
+    return json(c, {
+      ...template,
+      meta: parseDesignMd(template.designMd).meta,
+    });
   });
 
   app.post('/api/extract', async (c) => {

@@ -141,6 +141,34 @@ test('DraftStore creates an isolated React project and commits monotonic Git ver
   await assert.rejects(() => store.meta('../escape'), /draft not found/);
 });
 
+test('DraftStore lists readable project files and excludes generated or unsafe paths', async () => {
+  const store = createStore('file-list');
+  const draft = await store.createProject({ prompt: '浏览项目源码' });
+  const project = store.projectDir(draft.id);
+  await fs.mkdir(path.join(project, 'src/assets'), { recursive: true });
+  await fs.writeFile(path.join(project, 'src/assets/logo.svg'), '<svg />');
+  await fs.writeFile(path.join(project, 'src/assets/image.png'), 'not-an-image');
+  await fs.writeFile(path.join(project, '.env.local'), 'SECRET=hidden');
+  await fs.mkdir(path.join(project, 'dist'), { recursive: true });
+  await fs.writeFile(path.join(project, 'dist/generated.js'), 'generated');
+  const outside = path.join(temporaryRoot, 'outside-source.ts');
+  await fs.writeFile(outside, 'export const secret = true;');
+  await fs.symlink(outside, path.join(project, 'src/linked.ts'));
+
+  const { files } = await store.listSourceFiles(draft.id);
+  const paths = files.map((file) => file.path);
+  assert.ok(paths.includes('src/App.tsx'));
+  assert.ok(paths.includes('src/assets/logo.svg'));
+  assert.ok(paths.includes('package.json'));
+  assert.ok(!paths.includes('src/assets/image.png'));
+  assert.ok(!paths.includes('.env.local'));
+  assert.ok(!paths.includes('dist/generated.js'));
+  assert.ok(!paths.includes('src/linked.ts'));
+  assert.deepEqual(await store.readSource(draft.id, 'src/assets/logo.svg').then((item) => item.source), '<svg />');
+  await assert.rejects(() => store.readSource(draft.id, 'dist/generated.js'), /invalid draft path/);
+  await assert.rejects(() => store.readSource(draft.id, '.env.local'), /invalid draft path/);
+});
+
 test('source locator resolves selected JSX, imports, and owning component', async () => {
   const store = createStore('locator');
   const draft = await store.createProject({ prompt: 'locator' });

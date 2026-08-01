@@ -1,15 +1,21 @@
 import {
   Code2Icon,
+  CopyIcon,
   DownloadIcon,
+  FileTextIcon,
   MousePointer2Icon,
+  MonitorIcon,
   PlusIcon,
+  RefreshCwIcon,
   SparklesIcon,
 } from "lucide-react";
+import { DesignCode, DesignSpecimen } from "@/components/design-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function GenerationPlaceholder({ variantCount }) {
@@ -76,18 +82,37 @@ function PreviewAction({ label, children, ...props }) {
 export function PreviewStage({
   current,
   preview,
+  draftDesign,
+  styleDesign,
+  styleId,
+  stageView,
   previewRef,
   sending,
   variantCount,
   pickMode,
   selected,
   onPreviewLoad,
+  onStageViewChange,
+  onCopyDesign,
+  onRetryStyle,
   onTogglePick,
   onOpenSource,
   onNewDraft,
 }) {
   if (!current) {
-    return sending ? <GenerationPlaceholder variantCount={variantCount} /> : (
+    if (sending) return <GenerationPlaceholder variantCount={variantCount} />;
+    if (styleId !== "__default__") {
+      return (
+        <StylePreviewStage
+          state={styleDesign}
+          value={stageView}
+          onValueChange={onStageViewChange}
+          onCopy={onCopyDesign}
+          onRetry={onRetryStyle}
+        />
+      );
+    }
+    return (
       <div className="workspace-empty">
         <Empty className="max-w-xl border-0">
           <EmptyHeader>
@@ -113,8 +138,14 @@ export function PreviewStage({
     );
   }
 
+  const designContent = draftDesign.data?.content;
   return (
-    <section className="preview-stage" aria-label="草稿预览">
+    <Tabs
+      className="preview-stage gap-0"
+      value={stageView}
+      onValueChange={onStageViewChange}
+      aria-label="草稿预览"
+    >
       <div className="stage-toolbar">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -124,51 +155,172 @@ export function PreviewStage({
           <p className="stage-prompt">{current.meta.prompt}</p>
         </div>
         <div className="stage-actions">
-          {selected ? (
-            <Badge variant="outline" className="selected-badge">
-              <MousePointer2Icon data-icon="inline-start" />
-              {selected.component || selected.tagName}
-            </Badge>
-          ) : null}
-          <Button variant={pickMode ? "default" : "outline"} onClick={onTogglePick}>
-            <MousePointer2Icon data-icon="inline-start" />
-            {pickMode ? "退出点选" : "点选修改"}
-          </Button>
-          <PreviewAction label="查看源码" onClick={onOpenSource}>
-            <Code2Icon />
-          </PreviewAction>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="导出源码 ZIP"
-                  render={<a href={`/api/drafts/${encodeURIComponent(current.meta.id)}/export`} target="_blank" rel="noreferrer" />}
-                />
-              }
-            >
-              <DownloadIcon />
-            </TooltipTrigger>
-            <TooltipContent>导出源码 ZIP</TooltipContent>
-          </Tooltip>
+          <PreviewTabs />
+          {stageView === "preview" ? (
+            <>
+              {selected ? (
+                <Badge variant="outline" className="selected-badge">
+                  <MousePointer2Icon data-icon="inline-start" />
+                  {selected.component || selected.tagName}
+                </Badge>
+              ) : null}
+              <Button variant={pickMode ? "default" : "outline"} onClick={onTogglePick}>
+                <MousePointer2Icon data-icon="inline-start" />
+                {pickMode ? "退出点选" : "点选修改"}
+              </Button>
+              <PreviewAction label="查看源码" onClick={onOpenSource}>
+                <Code2Icon />
+              </PreviewAction>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="导出源码 ZIP"
+                      render={<a href={`/api/drafts/${encodeURIComponent(current.meta.id)}/export`} target="_blank" rel="noreferrer" />}
+                    />
+                  }
+                >
+                  <DownloadIcon />
+                </TooltipTrigger>
+                <TooltipContent>导出源码 ZIP</TooltipContent>
+              </Tooltip>
+            </>
+          ) : (
+            <Button variant="outline" disabled={!designContent} onClick={onCopyDesign}>
+              <CopyIcon data-icon="inline-start" />
+              复制
+            </Button>
+          )}
         </div>
       </div>
-      <div className="preview-frame-shell">
-        <div className="preview-browser-bar" aria-hidden="true">
-          <div className="browser-dots"><span /><span /><span /></div>
-          <div className="preview-address">localhost · {current.meta.title}</div>
-          <span className="preview-status">实时</span>
+      <TabsContent value="preview" className="stage-panel">
+        <div className="preview-frame-shell">
+          <div className="preview-browser-bar" aria-hidden="true">
+            <div className="browser-dots"><span /><span /><span /></div>
+            <div className="preview-address">localhost · {current.meta.title}</div>
+            <span className="preview-status">实时</span>
+          </div>
+          <iframe
+            ref={previewRef}
+            id="preview"
+            title={`${current.meta.title} 预览`}
+            src={preview?.url}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            onLoad={onPreviewLoad}
+          />
         </div>
-        <iframe
-          ref={previewRef}
-          id="preview"
-          title={`${current.meta.title} 预览`}
-          src={preview?.url}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          onLoad={onPreviewLoad}
-        />
-      </div>
-    </section>
+      </TabsContent>
+      <TabsContent value="design" className="stage-panel">
+        <DesignState state={draftDesign} content={designContent} />
+      </TabsContent>
+    </Tabs>
   );
+}
+
+function PreviewTabs() {
+  return (
+    <TabsList>
+      <TabsTrigger value="preview">
+        <MonitorIcon data-icon="inline-start" />
+        实时预览
+      </TabsTrigger>
+      <TabsTrigger value="design">
+        <FileTextIcon data-icon="inline-start" />
+        DESIGN.md
+      </TabsTrigger>
+    </TabsList>
+  );
+}
+
+function StylePreviewStage({ state, value, onValueChange, onCopy, onRetry }) {
+  const template = state.data;
+  return (
+    <Tabs
+      className="preview-stage gap-0"
+      value={value}
+      onValueChange={onValueChange}
+      aria-label="内置风格预览"
+    >
+      <div className="stage-toolbar">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h1 className="stage-title">{template?.name || "载入风格预览"}</h1>
+            {template ? <Badge variant="secondary">内置风格</Badge> : null}
+          </div>
+          <p className="stage-prompt">
+            {template ? [...template.tags.style, ...template.tags.industry].join(" · ") : "正在读取 DESIGN.md"}
+          </p>
+        </div>
+        <div className="stage-actions">
+          <PreviewTabs />
+          {value === "design" ? (
+            <Button variant="outline" disabled={!template?.designMd} onClick={onCopy}>
+              <CopyIcon data-icon="inline-start" />
+              复制
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      <TabsContent value="preview" className="stage-panel">
+        {state.status === "ready" ? (
+          <div className="design-preview-shell">
+            <DesignSpecimen meta={template.meta} label={template.name} />
+          </div>
+        ) : <DesignState state={state} onRetry={onRetry} />}
+      </TabsContent>
+      <TabsContent value="design" className="stage-panel">
+        <DesignState state={state} content={template?.designMd} onRetry={onRetry} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function DesignState({ state, content, onRetry }) {
+  if (state.status === "loading" || state.status === "idle") {
+    return (
+      <div className="design-state design-loading" aria-live="polite" aria-busy="true">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3 w-3/4" />
+        <Skeleton className="h-3 w-2/3" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <div className="design-state">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><FileTextIcon /></EmptyMedia>
+            <EmptyTitle>无法载入 DESIGN.md</EmptyTitle>
+            <EmptyDescription>{state.error}</EmptyDescription>
+          </EmptyHeader>
+          {onRetry ? (
+            <EmptyContent>
+              <Button variant="outline" onClick={onRetry}>
+                <RefreshCwIcon data-icon="inline-start" />
+                重试
+              </Button>
+            </EmptyContent>
+          ) : null}
+        </Empty>
+      </div>
+    );
+  }
+  if (!content) {
+    return (
+      <div className="design-state">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><FileTextIcon /></EmptyMedia>
+            <EmptyTitle>此草稿没有 DESIGN.md</EmptyTitle>
+            <EmptyDescription>使用具体内置风格生成的新草稿会在这里显示设计规范。</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
+    );
+  }
+  return <DesignCode content={content} />;
 }

@@ -12,9 +12,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { SourceWorkspace } from "@/components/source-workspace";
 import { cn } from "@/lib/utils";
 
 export function AppOverlays({
@@ -65,13 +66,8 @@ export function AppOverlays({
       </Sheet>
 
       <Dialog open={sourceOpen} onOpenChange={onSourceChange}>
-        <DialogContent className="source-dialog">
-          <DialogHeader>
-            <DialogTitle>React 源码 · {current?.source?.file || "src/App.tsx"}</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="source-scroll">
-            <pre id="source-view"><code>{current?.source?.content || "未找到默认入口源码"}</code></pre>
-          </ScrollArea>
+        <DialogContent className="source-dialog" showCloseButton={false}>
+          <SourceWorkspace current={current} onClose={() => onSourceChange(false)} />
         </DialogContent>
       </Dialog>
 

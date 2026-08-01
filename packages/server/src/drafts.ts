@@ -22,6 +22,31 @@ const COMPONENT_REGISTRY = path.resolve(
 );
 const DRAFT_ID = /^[a-z0-9][a-z0-9-]*$/;
 const TEMPLATE_VERSION = 2;
+const SOURCE_EXTENSIONS = new Set([
+  '.cjs',
+  '.css',
+  '.html',
+  '.js',
+  '.json',
+  '.jsx',
+  '.md',
+  '.mjs',
+  '.svg',
+  '.ts',
+  '.tsx',
+  '.txt',
+  '.yaml',
+  '.yml',
+]);
+const SOURCE_FILENAMES = new Set(['.gitignore']);
+const EXCLUDED_SOURCE_DIRECTORIES = new Set([
+  '.cache',
+  '.git',
+  '.vite',
+  'coverage',
+  'dist',
+  'node_modules',
+]);
 
 export class DraftNotFoundError extends Error {
   status = 404;
@@ -56,6 +81,15 @@ async function copyTemplate(source: string, destination: string): Promise<void> 
         && !relative.endsWith('.tsbuildinfo');
     },
   });
+}
+
+function isReadableSourceFile(relativeFile: string): boolean {
+  const normalized = relativeFile.replaceAll('\\', '/');
+  const segments = normalized.split('/');
+  if (segments.some((segment) => EXCLUDED_SOURCE_DIRECTORIES.has(segment))) return false;
+  const filename = segments.at(-1) ?? '';
+  if (/^\.env(?:\.|$)/i.test(filename)) return false;
+  return SOURCE_FILENAMES.has(filename) || SOURCE_EXTENSIONS.has(path.extname(filename).toLowerCase());
 }
 
 export class DraftStore {
@@ -316,7 +350,7 @@ export class DraftStore {
     const meta = await this.meta(id);
     const normalized = String(relativeFile).replaceAll('\\', '/');
     const absolute = this.resolveProjectFile(id, normalized);
-    if (!/\.(?:[cm]?[jt]sx?|css|json|html|md)$/.test(normalized)) {
+    if (!isReadableSourceFile(normalized)) {
       throw new InvalidDraftPathError(relativeFile);
     }
     let source;
@@ -336,6 +370,54 @@ export class DraftStore {
       source = stdout;
     }
     return { meta, file: normalized, source, version: version ?? meta.versions.length };
+  }
+
+  async listSourceFiles(id: unknown): Promise<{
+    files: Array<{ path: string; name: string; size: number }>;
+  }> {
+    await this.meta(id);
+    const project = await fs.realpath(this.projectDir(id));
+    const files: Array<{ path: string; name: string; size: number }> = [];
+
+    const visit = async (directory: string): Promise<void> => {
+      const entries = await fs.readdir(directory, { withFileTypes: true });
+      entries.sort((a, b) => {
+        if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        const absolute = path.join(directory, entry.name);
+        const relative = path.relative(project, absolute).replaceAll(path.sep, '/');
+        if (entry.isDirectory()) {
+          if (!EXCLUDED_SOURCE_DIRECTORIES.has(entry.name)) await visit(absolute);
+          continue;
+        }
+        if (!entry.isFile() || !isReadableSourceFile(relative)) continue;
+        const stat = await fs.stat(absolute);
+        files.push({ path: relative, name: entry.name, size: stat.size });
+      }
+    };
+
+    await visit(project);
+    return { files };
+  }
+
+  async readDesign(id: unknown): Promise<string | null> {
+    await this.meta(id);
+    const file = this.resolveProjectFile(id, 'DESIGN.md');
+    try {
+      const realProject = await fs.realpath(this.projectDir(id));
+      const realFile = await fs.realpath(file);
+      if (!realFile.startsWith(`${realProject}${path.sep}`)) {
+        throw new InvalidDraftPathError('DESIGN.md');
+      }
+      return await fs.readFile(realFile, 'utf8');
+    } catch (error: unknown) {
+      const knownError = errorWithStatus(error);
+      if (knownError.code === 'ENOENT') return null;
+      throw knownError;
+    }
   }
 
   async versionDiff(

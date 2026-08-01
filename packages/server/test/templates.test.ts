@@ -63,6 +63,7 @@ after(async () => {
 type ApiData = {
   templates?: Array<{ id: string; colors: Record<string, string> }>;
   designMd?: string;
+  meta?: { name?: string };
 };
 const api = async (
   requestPath: string,
@@ -89,6 +90,7 @@ test('GET /api/templates 列表 + GET /api/templates/:id 详情', async () => {
   const detail = await api('/api/templates/stripe');
   assert.equal(detail.status, 200);
   assert.match(detail.data?.designMd ?? '', /#635bff/);
+  assert.equal(detail.data?.meta?.name, 'stripe-theme');
   const missing = await api('/api/templates/nope');
   assert.equal(missing.status, 404);
 });
