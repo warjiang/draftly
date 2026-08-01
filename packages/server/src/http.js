@@ -1,225 +1,327 @@
-/**
- * http.js - REST API 层（HTML 草稿模式 M1-M4）
- * createApiServer({ provider, editorDir, drafts }) -> http.Server
- *
- * 端点：
- *   POST /api/draft/generate {prompt, variants?, style?}
- *   GET  /api/drafts
- *   GET  /api/draft/:id?v=N
- *   GET  /api/draft/:id/export
- *   POST /api/draft/:id/iterate {instruction}
- *   POST /api/draft/:id/edit-element {did, instruction}
- *   POST /api/draft/:id/rollback {v}
- *   GET  /api/templates           GET /api/templates/:id
- *   POST /api/extract {html, css} | {url}   （M5 反向提取预留）
- * 静态：
- *   GET /  -> packages/editor/public/drafts.html
- */
-import http from 'node:http';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import archiver from 'archiver';
+import {
+  editDraftByImage,
+  editDraftSource,
+  generateDrafts,
+  iterateDraft,
+} from './draft-generate.js';
 import { extractDesign, fetchSiteAssets } from './extract.js';
-import { loadTemplates, templateSummary, getTemplate } from './templates.js';
-import { generateDrafts, iterateDraft, editDraftElement, editDraftByImage } from './draft-generate.js';
+import { PreviewManager } from './preview-manager.js';
+import { assertNoEscapingSymlinks } from './source-locator.js';
+import { getTemplate, loadTemplates, templateSummary } from './templates.js';
 
-const EDITOR_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../editor/public');
+const EDITOR_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../editor/dist');
 
-/**
- * @param {{ provider: object, editorDir?: string, drafts: object }} opts
- * drafts 为 DraftStore 实例，必传
- */
-export function createApiServer({ provider, editorDir = EDITOR_DIR, drafts } = {}) {
+export function createApiServer({
+  provider,
+  editorDir = EDITOR_DIR,
+  drafts,
+  previewManager = null,
+} = {}) {
   if (!drafts) throw new Error('createApiServer: drafts store required');
+  const previews = previewManager || new PreviewManager({ drafts });
   const server = http.createServer(async (req, res) => {
     try {
-      await route(req, res, { provider, editorDir, drafts });
-    } catch (e) {
-      sendJson(res, 500, { error: e.message });
+      await route(req, res, { provider, editorDir, drafts, previews });
+    } catch (error) {
+      if (!res.headersSent) sendJson(res, error.status || 500, { error: error.message });
+      else res.destroy(error);
     }
+  });
+  server.previewManager = previews;
+  server.on('close', () => {
+    previews.shutdown?.().catch(() => {});
   });
   return server;
 }
 
-async function route(req, res, ctx) {
-  const { provider, editorDir, drafts } = ctx;
+async function route(req, res, context) {
+  const { provider, editorDir, drafts, previews } = context;
   const url = new URL(req.url, 'http://localhost');
-  const p = url.pathname;
+  const pathname = url.pathname;
+  const stream = url.searchParams.get('stream') === '1';
 
-  /* ---------- 静态编辑器 ---------- */
-  if (!p.startsWith('/api/')) {
-    return serveStatic(res, editorDir, p === '/' ? '/drafts.html' : p);
+  if (!pathname.startsWith('/api/')) {
+    return serveStatic(res, editorDir, pathname === '/' ? '/index.html' : pathname);
   }
 
-  /* ---------- API ---------- */
-  const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : null;
+  const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req) : null;
   const json = body ? safeJson(body) : null;
+  if (body && json === null) return sendJson(res, 400, { error: 'invalid JSON body' });
 
-  /* ---------- HTML 草稿（M1-M4） ---------- */
-  if (p === '/api/draft/generate' && req.method === 'POST') {
-    if (!json?.prompt) return sendJson(res, 400, { error: 'prompt required' });
-    // 风格预设（M4）：指定 style 时用模板库的 designMd 作为设计契约；否则不注入
+  if (pathname === '/api/drafts/generate' && req.method === 'POST') {
+    if (!json?.prompt?.trim()) return sendJson(res, 400, { error: 'prompt required' });
     let designMd = null;
     if (json.style) {
-      const t = await getTemplate(String(json.style));
-      if (!t) return sendJson(res, 400, { error: `unknown style: ${json.style}` });
-      designMd = t.designMd;
+      const template = await getTemplate(String(json.style));
+      if (!template) return sendJson(res, 400, { error: `unknown style: ${json.style}` });
+      designMd = template.designMd;
     }
-    try {
-      const result = await generateDrafts({
-        drafts, provider,
-        prompt: json.prompt, variants: json.variants, designMd,
-      });
-      return sendJson(res, 200, result);
-    } catch (e) {
-      return sendJson(res, 502, { error: e.message });
-    }
+    const execute = (onProgress) => generateDrafts({
+      drafts,
+      provider,
+      prompt: json.prompt,
+      variants: json.variants,
+      designMd,
+      onProgress,
+    });
+    return stream ? streamResult(res, execute) : sendOperation(res, execute, 502);
   }
 
-  if (p === '/api/drafts' && req.method === 'GET') {
+  if (pathname === '/api/drafts' && req.method === 'GET') {
     return sendJson(res, 200, { drafts: await drafts.list() });
   }
 
-  const draftGet = /^\/api\/draft\/([^/]+)$/.exec(p);
-  if (draftGet && req.method === 'GET') {
-    const v = url.searchParams.get('v');
+  const detail = /^\/api\/drafts\/([^/]+)$/.exec(pathname);
+  if (detail && req.method === 'GET') {
+    const id = decodeURIComponent(detail[1]);
+    const meta = await drafts.meta(id);
+    let source = null;
     try {
-      const { meta, html, version } = await drafts.readHtml(
-        decodeURIComponent(draftGet[1]), v ? Number(v) : null);
-      return sendJson(res, 200, { meta, html, version });
-    } catch (e) {
-      return sendJson(res, e.status || 500, { error: e.message });
+      source = await drafts.readSource(id, url.searchParams.get('file') || 'src/App.tsx');
+    } catch (error) {
+      if (url.searchParams.has('file')) throw error;
     }
+    return sendJson(res, 200, {
+      meta,
+      version: meta.versions.length,
+      source: source ? { file: source.file, content: source.source } : null,
+    });
   }
 
-  const draftExport = /^\/api\/draft\/([^/]+)\/export$/.exec(p);
-  if (draftExport && req.method === 'GET') {
-    // 导出 HTML（M4）：最新版本整页下载
-    try {
-      const { meta, html, version } = await drafts.readHtml(decodeURIComponent(draftExport[1]));
-      res.writeHead(200, {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Content-Disposition': `attachment; filename="draftly-${meta.id}-v${version}.html"`,
-        'Cache-Control': 'no-store',
-      });
-      return res.end(html);
-    } catch (e) {
-      return sendJson(res, e.status || 500, { error: e.message });
+  const sourceRoute = /^\/api\/drafts\/([^/]+)\/source$/.exec(pathname);
+  if (sourceRoute && req.method === 'GET') {
+    const file = url.searchParams.get('file') || 'src/App.tsx';
+    const version = url.searchParams.get('v');
+    const result = await drafts.readSource(
+      decodeURIComponent(sourceRoute[1]),
+      file,
+      version ? Number(version) : null,
+    );
+    return sendJson(res, 200, result);
+  }
+
+  const previewRoute = /^\/api\/drafts\/([^/]+)\/preview$/.exec(pathname);
+  if (previewRoute && req.method === 'POST') {
+    const preview = await previews.ensure(decodeURIComponent(previewRoute[1]));
+    return sendJson(res, 200, preview);
+  }
+
+  const iterateRoute = /^\/api\/drafts\/([^/]+)\/iterate$/.exec(pathname);
+  if (iterateRoute && req.method === 'POST') {
+    if (!json?.instruction?.trim()) return sendJson(res, 400, { error: 'instruction required' });
+    const execute = (onProgress) => iterateDraft({
+      drafts,
+      provider,
+      id: decodeURIComponent(iterateRoute[1]),
+      instruction: json.instruction,
+      onProgress,
+    });
+    return stream ? streamResult(res, execute) : sendOperation(res, execute, 502);
+  }
+
+  const editSourceRoute = /^\/api\/drafts\/([^/]+)\/edit-source$/.exec(pathname);
+  if (editSourceRoute && req.method === 'POST') {
+    if (!json?.instruction?.trim()) return sendJson(res, 400, { error: 'instruction required' });
+    if (!json?.locator) return sendJson(res, 400, { error: 'locator required' });
+    const execute = (onProgress) => editDraftSource({
+      drafts,
+      provider,
+      id: decodeURIComponent(editSourceRoute[1]),
+      locator: json.locator,
+      instruction: json.instruction,
+      onProgress,
+    });
+    return stream ? streamResult(res, execute) : sendOperation(res, execute, 502);
+  }
+
+  const editImageRoute = /^\/api\/drafts\/([^/]+)\/edit-by-image$/.exec(pathname);
+  if (editImageRoute && req.method === 'POST') {
+    if (!json?.image) return sendJson(res, 400, { error: 'image required' });
+    if (!json?.instruction?.trim()) return sendJson(res, 400, { error: 'instruction required' });
+    const execute = (onProgress) => editDraftByImage({
+      drafts,
+      provider,
+      id: decodeURIComponent(editImageRoute[1]),
+      image: json.image,
+      instruction: json.instruction,
+      onProgress,
+    });
+    return stream ? streamResult(res, execute) : sendOperation(res, execute, 502);
+  }
+
+  const rollbackRoute = /^\/api\/drafts\/([^/]+)\/rollback$/.exec(pathname);
+  if (rollbackRoute && req.method === 'POST') {
+    if (json?.v === undefined || json.v === null) {
+      return sendJson(res, 400, { error: 'v required' });
     }
+    const execute = async (onProgress) => {
+      onProgress?.({ type: 'pipeline', stage: 'rollback_started', target: Number(json.v) });
+      const result = await drafts.rollbackVersion(decodeURIComponent(rollbackRoute[1]), json.v);
+      onProgress?.({ type: 'pipeline', stage: 'version_saved', version: result.version });
+      return {
+        id: result.meta.id,
+        title: result.meta.title,
+        version: result.version,
+      };
+    };
+    return stream ? streamResult(res, execute) : sendOperation(res, execute);
   }
 
-  const draftIterate = /^\/api\/draft\/([^/]+)\/iterate$/.exec(p);
-  if (draftIterate && req.method === 'POST') {
-    if (!json?.instruction) return sendJson(res, 400, { error: 'instruction required' });
-    const id = decodeURIComponent(draftIterate[1]);
-    try {
-      const result = await iterateDraft({ drafts, provider, id, instruction: json.instruction });
-      return sendJson(res, 200, result);
-    } catch (e) {
-      return sendJson(res, e.status || 502, { error: e.message });
+  const diffRoute = /^\/api\/drafts\/([^/]+)\/versions\/(\d+)\/diff$/.exec(pathname);
+  if (diffRoute && req.method === 'GET') {
+    return sendJson(
+      res,
+      200,
+      await drafts.versionDiff(decodeURIComponent(diffRoute[1]), Number(diffRoute[2])),
+    );
+  }
+
+  const exportRoute = /^\/api\/drafts\/([^/]+)\/export$/.exec(pathname);
+  if (exportRoute && req.method === 'GET') {
+    return exportSource(res, drafts, decodeURIComponent(exportRoute[1]));
+  }
+
+  if (pathname === '/api/templates' && req.method === 'GET') {
+    const templates = await loadTemplates();
+    return sendJson(res, 200, { templates: templates.map(templateSummary) });
+  }
+
+  if (pathname.startsWith('/api/templates/') && req.method === 'GET') {
+    const id = decodeURIComponent(pathname.slice('/api/templates/'.length));
+    const template = await getTemplate(id);
+    if (!template) return sendJson(res, 404, { error: `unknown template: ${id}` });
+    return sendJson(res, 200, template);
+  }
+
+  if (pathname === '/api/extract' && req.method === 'POST') {
+    if (json?.url) return sendJson(res, 200, extractDesign(await fetchSiteAssets(json.url)));
+    const cssTexts = Array.isArray(json?.css) ? json.css : (json?.css ? [json.css] : []);
+    if (!json?.html && !cssTexts.length) {
+      return sendJson(res, 400, { error: 'required: { html, css } or { url }' });
     }
+    return sendJson(res, 200, extractDesign({ html: json.html || '', cssTexts }));
   }
 
-  const draftEditElement = /^\/api\/draft\/([^/]+)\/edit-element$/.exec(p);
-  if (draftEditElement && req.method === 'POST') {
-    const { did, instruction } = json || {};
-    if (did === undefined || did === null || did === '') return sendJson(res, 400, { error: 'did required' });
-    if (!instruction) return sendJson(res, 400, { error: 'instruction required' });
-    const id = decodeURIComponent(draftEditElement[1]);
-    try {
-      const result = await editDraftElement({ drafts, provider, id, did, instruction });
-      return sendJson(res, 200, result);
-    } catch (e) {
-      return sendJson(res, e.status || 502, { error: e.message });
-    }
-  }
-
-  const draftEditByImage = /^\/api\/draft\/([^/]+)\/edit-by-image$/.exec(p);
-  if (draftEditByImage && req.method === 'POST') {
-    // 截图修改（M5）：截图 base64(data URL) + 指令 -> 修改后整页 HTML
-    const { image, instruction } = json || {};
-    if (!image) return sendJson(res, 400, { error: 'image required' });
-    if (!instruction) return sendJson(res, 400, { error: 'instruction required' });
-    const id = decodeURIComponent(draftEditByImage[1]);
-    try {
-      const result = await editDraftByImage({ drafts, provider, id, image, instruction });
-      return sendJson(res, 200, result);
-    } catch (e) {
-      return sendJson(res, e.status || 502, { error: e.message });
-    }
-  }
-
-  const draftRollback = /^\/api\/draft\/([^/]+)\/rollback$/.exec(p);
-  if (draftRollback && req.method === 'POST') {
-    const v = json?.v ?? url.searchParams.get('v');
-    if (v === null || v === undefined || v === '') return sendJson(res, 400, { error: 'v required' });
-    const id = decodeURIComponent(draftRollback[1]);
-    try {
-      const { meta, version } = await drafts.rollbackVersion(id, v);
-      return sendJson(res, 200, { id: meta.id, title: meta.title, version });
-    } catch (e) {
-      return sendJson(res, e.status || 500, { error: e.message });
-    }
-  }
-
-  /* ---------- 模板库（M4 风格预设） ---------- */
-  if (p === '/api/templates' && req.method === 'GET') {
-    const all = await loadTemplates();
-    return sendJson(res, 200, { templates: all.map(templateSummary) });
-  }
-  if (p.startsWith('/api/templates/') && req.method === 'GET') {
-    const id = p.slice('/api/templates/'.length);
-    const t = await getTemplate(decodeURIComponent(id));
-    if (!t) return sendJson(res, 404, { error: `unknown template: ${id}` });
-    return sendJson(res, 200, t);
-  }
-
-  /* ---------- 设计提取（M5 预留：DESIGN.md 反向提取） ---------- */
-  if (p === '/api/extract' && req.method === 'POST') {
-    try {
-      if (json?.url) {
-        const assets = await fetchSiteAssets(json.url);
-        return sendJson(res, 200, extractDesign(assets));
-      }
-      const cssTexts = Array.isArray(json?.css) ? json.css : (json?.css ? [json.css] : []);
-      if (!json?.html && !cssTexts.length) {
-        return sendJson(res, 400, { error: 'required: { html, css } 或 { url }' });
-      }
-      return sendJson(res, 200, extractDesign({ html: json.html || '', cssTexts }));
-    } catch (e) {
-      const status = e.code === 'EXTRACT_OFFLINE' ? 501 : 500;
-      return sendJson(res, status, { error: e.message, hint: 'POST /api/extract { html, css } 可直接粘贴页面源码（离线可用）' });
-    }
-  }
-
-  sendJson(res, 404, { error: `unknown endpoint: ${req.method} ${p}` });
+  return sendJson(res, 404, { error: `unknown endpoint: ${req.method} ${pathname}` });
 }
 
-/* ---------- 工具 ---------- */
+async function sendOperation(res, execute, errorStatus = 500) {
+  try {
+    return sendJson(res, 200, await execute());
+  } catch (error) {
+    return sendJson(res, error.status || errorStatus, { error: error.message });
+  }
+}
 
-function sendJson(res, code, obj) {
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(JSON.stringify(obj));
+async function streamResult(res, execute) {
+  res.writeHead(200, {
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  const send = (payload) => res.write(`${JSON.stringify(payload)}\n`);
+  try {
+    const result = await execute((event) => send({ type: 'progress', event }));
+    send({ type: 'result', data: result });
+  } catch (error) {
+    send({ type: 'error', error: error.message, status: error.status || 500 });
+  } finally {
+    res.end();
+  }
+}
+
+async function exportSource(res, drafts, id) {
+  const meta = await drafts.meta(id);
+  const version = meta.versions.length;
+  const projectDir = drafts.projectDir(id);
+  await assertNoEscapingSymlinks(projectDir);
+  res.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Disposition': `attachment; filename="draftly-${meta.id}-v${version}.zip"`,
+    'Cache-Control': 'no-store',
+  });
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.on('error', (error) => res.destroy(error));
+  archive.pipe(res);
+  archive.glob('**/*', {
+    cwd: projectDir,
+    dot: true,
+    ignore: [
+      '.git',
+      '.git/**',
+      'node_modules',
+      'node_modules/**',
+      'dist',
+      'dist/**',
+      '.draftly-input',
+      '.draftly-input/**',
+      '**/*.tsbuildinfo',
+    ],
+  });
+  await archive.finalize();
+}
+
+function sendJson(res, status, value) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
+  res.end(JSON.stringify(value));
 }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (c) => { data += c; if (data.length > 1e7) reject(new Error('body too large')); });
+    req.on('data', (chunk) => {
+      data += chunk;
+      if (data.length > 10_000_000) {
+        const error = new Error('body too large');
+        error.status = 413;
+        reject(error);
+        req.destroy();
+      }
+    });
     req.on('end', () => resolve(data));
     req.on('error', reject);
   });
 }
 
-function safeJson(s) { try { return JSON.parse(s); } catch { return null; } }
-
-const STATIC_MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
-
-function serveStatic(res, dir, p) {
-  const abs = path.resolve(dir, p.replace(/^\/+/, ''));
-  if (!abs.startsWith(path.resolve(dir) + path.sep) || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
-    res.writeHead(404); return res.end('not found');
+function safeJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
-  res.writeHead(200, { 'Content-Type': (STATIC_MIME[path.extname(abs)] || 'application/octet-stream') + '; charset=utf-8' });
-  fs.createReadStream(abs).pipe(res);
+}
+
+const STATIC_MIME = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.woff2': 'font/woff2',
+};
+
+function serveStatic(res, directory, requestPath) {
+  const root = path.resolve(directory);
+  const absolute = path.resolve(root, requestPath.replace(/^\/+/, ''));
+  if (
+    !absolute.startsWith(`${root}${path.sep}`)
+    || !fs.existsSync(absolute)
+    || !fs.statSync(absolute).isFile()
+  ) {
+    res.writeHead(404);
+    return res.end('not found');
+  }
+  res.writeHead(200, {
+    'Content-Type': `${STATIC_MIME[path.extname(absolute)] || 'application/octet-stream'}; charset=utf-8`,
+  });
+  return fs.createReadStream(absolute).pipe(res);
 }

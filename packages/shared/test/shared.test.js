@@ -1,10 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDesignMd, serializeDesignMd, defaultDesignMd, validateDesignMd } from '../src/design-md.js';
-import {
-  MockProvider, createProvider, LLMProvider,
-  DRAFT_PROMPT_MARKER, ITERATE_PROMPT_MARKER, EDIT_ELEMENT_PROMPT_MARKER, EDIT_BY_IMAGE_PROMPT_MARKER,
-} from '../src/llm.js';
 
 test('parseDesignMd / serializeDesignMd 往返', () => {
   const src = defaultDesignMd();
@@ -67,57 +63,4 @@ test('parseDesignMd 无 frontmatter 容错', () => {
   const { meta, body } = parseDesignMd('# hello\n正文');
   assert.deepEqual(meta, {});
   assert.match(body, /hello/);
-});
-
-test('MockProvider 草稿模式：确定性整页 HTML（登录/仪表盘/落地页）', async () => {
-  const p = new MockProvider();
-  const mk = (s) => [{ role: 'system', content: DRAFT_PROMPT_MARKER }, { role: 'user', content: s }];
-  const login1 = await p.complete(mk('做一个登录页'));
-  const login2 = await p.complete(mk('帮我做个 login 页面'));
-  assert.equal(login1, login2); // 确定性
-  assert.match(login1, /<!doctype html>/i);
-  assert.match(login1, /登录/);
-  const dash = await p.complete(mk('做一个数据仪表盘'));
-  assert.match(dash, /仪表盘/);
-  const land = await p.complete(mk('做一个产品落地页'));
-  assert.match(land, /落地|AI|免费开始/);
-});
-
-test('MockProvider 迭代模式与元素局部编辑模式', async () => {
-  const p = new MockProvider();
-  const iterMsgs = [
-    { role: 'system', content: ITERATE_PROMPT_MARKER },
-    { role: 'user', content: '当前 HTML：\n<!doctype html><html><body><h1>草稿</h1></body></html>\n\n修改指令：改成深色模式' },
-  ];
-  const iter = await p.complete(iterMsgs);
-  assert.match(iter, /m2-iterated|dark/i);
-
-  const editMsgs = [
-    { role: 'system', content: EDIT_ELEMENT_PROMPT_MARKER },
-    { role: 'user', content: '目标元素：\n<button data-did="3">b</button>\n\n修改指令：换成描边样式' },
-  ];
-  const edit = await p.complete(editMsgs);
-  assert.match(edit, /data-did="3"/);
-  assert.match(edit, /border: 2px solid/);
-});
-
-test('MockProvider 截图修改模式：注入截图标记 + 确定性（多模态消息）', async () => {
-  const p = new MockProvider();
-  const msgs = [
-    { role: 'system', content: EDIT_BY_IMAGE_PROMPT_MARKER },
-    { role: 'user', content: [
-      { type: 'text', text: '当前 HTML：\n<!doctype html><html><body><h1>草稿</h1></body></html>\n\n修改指令：改成深色模式' },
-      { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' } },
-    ] },
-  ];
-  const out = await p.complete(msgs);
-  assert.match(out, /m-img-edit/);
-  assert.equal(await p.complete(msgs), out); // 确定性
-});
-
-test('createProvider 无 key -> MockProvider', () => {
-  delete process.env.DRAFTLY_LLM_API_KEY;
-  delete process.env.DRAFTLY_LLM_BASE_URL;
-  assert.ok(createProvider() instanceof MockProvider);
-  assert.ok(createProvider() instanceof LLMProvider);
 });

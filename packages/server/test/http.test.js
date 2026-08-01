@@ -1,75 +1,71 @@
-/**
- * http.test.js - HTTP API 层补充测试（HTML 草稿模式 M1-M4）
- * 草稿生成/迭代/点选/回退/导出/模板列表的端到端集成见 drafts.test.js；
- * 本文件覆盖 drafts.test.js 未触及的端点：静态根、模板详情、设计提取、404。
- */
-import { test, before, after } from 'node:test';
+import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { MockProvider } from '../../shared/src/llm.js';
 import { DraftStore } from '../src/drafts.js';
 import { createApiServer } from '../src/http.js';
 
-let tmp, server, base;
+let temporaryRoot;
+let server;
+let base;
+
 before(async () => {
-  tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-http-'));
-  const drafts = new DraftStore({ rootDir: path.join(tmp, 'drafts') });
-  server = createApiServer({ provider: new MockProvider(), drafts });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-http-tests-'));
+  const editorDir = path.join(temporaryRoot, 'editor');
+  await fs.mkdir(editorDir, { recursive: true });
+  await fs.writeFile(path.join(editorDir, 'index.html'), '<!doctype html><div id="root"></div>');
+  const drafts = new DraftStore({
+    rootDir: path.join(temporaryRoot, 'drafts'),
+    installDependencies: false,
+  });
+  server = createApiServer({
+    drafts,
+    editorDir,
+    provider: { runTask: async () => 'unused' },
+    previewManager: { ensure: async () => ({}), shutdown: async () => {} },
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
 });
+
 after(async () => {
-  server.closeAllConnections?.();
-  await new Promise((r) => server.close(r));
-  await fs.rm(tmp, { recursive: true, force: true });
+  await new Promise((resolve) => server.close(resolve));
+  await fs.rm(temporaryRoot, { recursive: true, force: true });
 });
 
-const api = async (p, opts = {}) => {
-  const res = await fetch(base + p, opts.method ? {
-    method: opts.method,
-    headers: { 'Content-Type': 'application/json' },
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  } : undefined);
-  let data = null;
-  try { data = await res.json(); } catch { /* 静态响应非 JSON */ }
-  return { status: res.status, data, res };
-};
-
-test('静态根 / 返回 drafts.html（新编辑器入口）', async () => {
-  const res = await fetch(`${base}/`);
-  assert.equal(res.status, 200);
-  const html = await res.text();
-  assert.match(html, /drafts-app\.js/);
-  assert.match(html, /设计草稿|draftly/i);
+test('serves the Vite editor entry', async () => {
+  const response = await fetch(`${base}/`);
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /id="root"/);
 });
 
-test('GET /api/templates/:id 详情；未知 id 404', async () => {
-  const list = await api('/api/templates');
-  const id = list.data.templates[0].id;
-  const r = await api(`/api/templates/${id}`);
-  assert.equal(r.status, 200);
-  assert.ok(r.data.designMd);
-  const missing = await api('/api/templates/nope');
-  assert.equal(missing.status, 404);
+test('serves template details and rejects an unknown template', async () => {
+  const list = await fetch(`${base}/api/templates`).then((response) => response.json());
+  assert.ok(list.templates.length > 0);
+  const detail = await fetch(`${base}/api/templates/${list.templates[0].id}`);
+  assert.equal(detail.status, 200);
+  assert.ok((await detail.json()).designMd);
+  assert.equal((await fetch(`${base}/api/templates/nope`)).status, 404);
 });
 
-test('POST /api/extract {html, css} 离线设计提取；空体 400', async () => {
-  const r = await api('/api/extract', {
+test('extracts a design offline and validates request bodies', async () => {
+  const response = await fetch(`${base}/api/extract`, {
     method: 'POST',
-    body: {
-      html: '<div class="btn">x</div>',
-      css: '.btn { color: #3b82f6; border-radius: 8px; }',
-    },
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      html: '<button class="primary">Save</button>',
+      css: '.primary { color: #2563eb; border-radius: 8px; }',
+    }),
   });
-  assert.equal(r.status, 200);
-  assert.ok(r.data.designMd);
-  const bad = await api('/api/extract', { method: 'POST', body: {} });
-  assert.equal(bad.status, 400);
-});
+  assert.equal(response.status, 200);
+  assert.ok((await response.json()).designMd);
 
-test('未知 API 端点 404', async () => {
-  const r = await api('/api/no-such-endpoint');
-  assert.equal(r.status, 404);
+  const invalid = await fetch(`${base}/api/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{',
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal((await fetch(`${base}/api/no-such-route`)).status, 404);
 });

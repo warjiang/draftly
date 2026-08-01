@@ -9,5 +9,9 @@
     "start": "node src/dev.js",
     "test": "node --test test/*.test.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@babel/parser": "^7.28.6",
+    "@babel/traverse": "^7.28.6",
+    "archiver": "^7.0.1"
+  }
 }

@@ -4,7 +4,6 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { parseDesignMd } from '../../shared/src/design-md.js';
-import { MockProvider } from '../../shared/src/llm.js';
 import { DraftStore } from '../src/drafts.js';
 import { createApiServer } from '../src/http.js';
 import { loadTemplates, validateTemplate, templateSummary } from '../src/templates.js';
@@ -47,7 +46,11 @@ let tmp, server, base;
 before(async () => {
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-tpl-'));
   const drafts = new DraftStore({ rootDir: path.join(tmp, 'drafts') });
-  server = createApiServer({ provider: new MockProvider(), drafts });
+  server = createApiServer({
+    provider: { runTask: async () => 'unused' },
+    drafts,
+    previewManager: { ensure: async () => ({}), shutdown: async () => {} },
+  });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
 });
