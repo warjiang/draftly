@@ -1,11 +1,15 @@
-/**
- * drafts.js — HTML 草稿存储与版本管理（M1）
- * 存储布局：<rootDir>/<draftId>/v1.html, v2.html, ... + meta.json
- * meta.json: { id, title, prompt, createdAt, versions: [{ v, kind, instruction, at }] }
- */
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { runCommand } from './process.js';
+
+const DEFAULT_TEMPLATE_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../draft-template',
+);
+const DRAFT_ID = /^[a-z0-9][a-z0-9-]*$/;
+const TEMPLATE_VERSION = 1;
 
 export class DraftNotFoundError extends Error {
   constructor(id) {
@@ -14,84 +18,273 @@ export class DraftNotFoundError extends Error {
   }
 }
 
+export class InvalidDraftPathError extends Error {
+  constructor(file) {
+    super(`invalid draft path: ${file}`);
+    this.status = 400;
+  }
+}
+
+async function writeJsonAtomic(file, value) {
+  const temporary = `${file}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`);
+  await fs.rename(temporary, file);
+}
+
+async function copyTemplate(source, destination) {
+  await fs.cp(source, destination, {
+    recursive: true,
+    filter(file) {
+      const relative = path.relative(source, file);
+      if (!relative) return true;
+      const first = relative.split(path.sep)[0];
+      return !['node_modules', 'dist', '.git'].includes(first)
+        && !relative.endsWith('.tsbuildinfo');
+    },
+  });
+}
+
 export class DraftStore {
-  /** @param {{ rootDir: string }} opts */
-  constructor({ rootDir }) {
-    this.rootDir = rootDir;
+  constructor({
+    rootDir,
+    templateDir = DEFAULT_TEMPLATE_DIR,
+    commandRunner = runCommand,
+    installDependencies = true,
+  }) {
+    this.rootDir = path.resolve(rootDir);
+    this.templateDir = path.resolve(templateDir);
+    this.run = commandRunner;
+    this.installDependencies = installDependencies;
   }
 
-  _dir(id) { return path.join(this.rootDir, id); }
-  _metaPath(id) { return path.join(this._dir(id), 'meta.json'); }
+  _assertId(id) {
+    if (!DRAFT_ID.test(String(id))) throw new DraftNotFoundError(id);
+    return String(id);
+  }
 
-  /** 草稿列表（按创建时间倒序） */
+  _dir(id) {
+    return path.join(this.rootDir, this._assertId(id));
+  }
+
+  _metaPath(id) {
+    return path.join(this._dir(id), 'meta.json');
+  }
+
+  projectDir(id) {
+    return path.join(this._dir(id), 'project');
+  }
+
   async list() {
     let names;
-    try { names = await fs.readdir(this.rootDir); } catch { return []; }
+    try {
+      names = await fs.readdir(this.rootDir);
+    } catch (error) {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    }
     const drafts = [];
     for (const name of names) {
+      if (!DRAFT_ID.test(name)) continue;
       try {
-        drafts.push(JSON.parse(await fs.readFile(this._metaPath(name), 'utf8')));
-      } catch { /* 非草稿目录 / 损坏 meta，跳过 */ }
+        const meta = JSON.parse(await fs.readFile(this._metaPath(name), 'utf8'));
+        drafts.push(meta.format ? meta : { ...meta, format: 'html-legacy' });
+      } catch {
+        // Ignore unrelated and incomplete directories.
+      }
     }
     return drafts.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   }
 
-  /** 创建空草稿（尚无版本） */
-  async create({ prompt }) {
+  async createProject({ prompt, designMd = null, onProgress } = {}) {
     const id = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
+    const draftDir = this._dir(id);
+    const projectDir = this.projectDir(id);
     const meta = {
       id,
-      title: String(prompt || '未命名草稿').replace(/\s+/g, ' ').trim().slice(0, 30) || '未命名草稿',
-      prompt,
+      title: String(prompt || '未命名草稿').replace(/\s+/g, ' ').trim().slice(0, 40) || '未命名草稿',
+      prompt: String(prompt || ''),
+      format: 'vite-react',
+      schemaVersion: 2,
+      templateVersion: TEMPLATE_VERSION,
+      projectDir: 'project',
       createdAt: new Date().toISOString(),
       versions: [],
     };
-    await fs.mkdir(this._dir(id), { recursive: true });
-    await fs.writeFile(this._metaPath(id), JSON.stringify(meta, null, 2));
-    return meta;
+
+    await fs.mkdir(this.rootDir, { recursive: true });
+    await fs.mkdir(draftDir);
+    try {
+      onProgress?.({ type: 'pipeline', stage: 'scaffold_started' });
+      await copyTemplate(this.templateDir, projectDir);
+      if (designMd) await fs.writeFile(path.join(projectDir, 'DESIGN.md'), `${designMd.trim()}\n`);
+      await writeJsonAtomic(this._metaPath(id), meta);
+      onProgress?.({ type: 'pipeline', stage: 'scaffold_completed' });
+
+      if (this.installDependencies) {
+        onProgress?.({ type: 'pipeline', stage: 'dependencies_started' });
+        await this.run('npm', ['install', '--no-audit', '--no-fund'], { cwd: projectDir });
+        onProgress?.({ type: 'pipeline', stage: 'dependencies_completed' });
+      }
+
+      await this.run('git', ['init', '--quiet'], { cwd: projectDir });
+      await this.run('git', ['config', 'user.name', 'Draftly'], { cwd: projectDir });
+      await this.run('git', ['config', 'user.email', 'draftly@localhost'], { cwd: projectDir });
+      await fs.writeFile(
+        path.join(projectDir, '.gitignore'),
+        'node_modules/\ndist/\n*.tsbuildinfo\n.draftly-input/\n',
+      );
+      await this.run('git', ['add', '-A'], { cwd: projectDir });
+      await this.run('git', ['commit', '--quiet', '-m', 'chore: initialize Draftly project'], { cwd: projectDir });
+      return meta;
+    } catch (error) {
+      await fs.rm(draftDir, { recursive: true, force: true });
+      throw error;
+    }
   }
 
-  /** 追加一个版本，返回 { meta, v } */
-  async saveVersion(id, html, { kind = 'generate', instruction = null } = {}) {
-    const meta = await this.meta(id);
-    const v = meta.versions.length + 1;
-    await fs.writeFile(path.join(this._dir(id), `v${v}.html`), html);
-    meta.versions.push({ v, kind, instruction, at: new Date().toISOString() });
-    await fs.writeFile(this._metaPath(id), JSON.stringify(meta, null, 2));
-    return { meta, v };
+  async remove(id) {
+    await fs.rm(this._dir(id), { recursive: true, force: true });
   }
 
   async meta(id) {
     try {
-      return JSON.parse(await fs.readFile(this._metaPath(id), 'utf8'));
-    } catch {
+      const meta = JSON.parse(await fs.readFile(this._metaPath(id), 'utf8'));
+      if (meta.format !== 'vite-react') {
+        const error = new Error(`legacy HTML draft requires migration: ${id}`);
+        error.status = 409;
+        throw error;
+      }
+      return meta;
+    } catch (error) {
+      if (error.status) throw error;
       throw new DraftNotFoundError(id);
     }
   }
 
-  /** 读取某版本 HTML；v 缺省 = 最新版本 */
-  async readHtml(id, v = null) {
-    const meta = await this.meta(id);
-    const version = v ?? meta.versions.length;
-    if (!Number.isInteger(version) || version < 1 || version > meta.versions.length) {
-      throw new DraftNotFoundError(`${id} v${version}`);
-    }
-    const html = await fs.readFile(path.join(this._dir(id), `v${version}.html`), 'utf8');
-    return { meta, html, version };
+  async head(id) {
+    const { stdout } = await this.run('git', ['rev-parse', 'HEAD'], { cwd: this.projectDir(id) });
+    return stdout.trim();
   }
 
-  /** 回退到指定版本：删除 v 之后的版本文件并截断 meta.versions */
-  async rollbackVersion(id, v) {
+  async assertClean(id) {
+    const { stdout } = await this.run('git', ['status', '--porcelain'], { cwd: this.projectDir(id) });
+    if (stdout.trim()) throw new Error(`draft workspace has uncommitted changes: ${id}`);
+  }
+
+  async resetTo(id, commit) {
+    const cwd = this.projectDir(id);
+    await this.run('git', ['reset', '--hard', commit], { cwd });
+    await this.run('git', ['clean', '-fd'], { cwd });
+  }
+
+  async commitVersion(id, { kind, instruction = null, summary = null } = {}) {
     const meta = await this.meta(id);
-    const target = Number.parseInt(v, 10);
-    if (!Number.isInteger(target) || target < 1 || target > meta.versions.length) {
-      throw new DraftNotFoundError(`${id} v${target}`);
+    const cwd = this.projectDir(id);
+    await this.run('git', ['add', '-A'], { cwd });
+    const { stdout: staged } = await this.run('git', ['diff', '--cached', '--name-only'], { cwd });
+    if (!staged.trim()) throw new Error('Pi task completed without changing source files');
+    const v = meta.versions.length + 1;
+    const message = `${kind === 'generate' ? 'feat' : 'draft'}: ${kind} v${v}`;
+    await this.run('git', ['commit', '--quiet', '-m', message], { cwd });
+    const commit = await this.head(id);
+    meta.versions.push({
+      v,
+      commit,
+      kind,
+      instruction,
+      summary,
+      files: staged.trim().split('\n'),
+      at: new Date().toISOString(),
+    });
+    await writeJsonAtomic(this._metaPath(id), meta);
+    return { meta, version: v, commit };
+  }
+
+  async runVersionTransaction(id, details, execute) {
+    await this.meta(id);
+    await this.assertClean(id);
+    const before = await this.head(id);
+    try {
+      const outcome = await execute(this.projectDir(id));
+      const committed = await this.commitVersion(id, { ...details, summary: outcome?.summary || null });
+      return { ...committed, outcome };
+    } catch (error) {
+      await this.resetTo(id, before).catch(() => {});
+      throw error;
     }
-    for (let i = meta.versions.length; i > target; i -= 1) {
-      await fs.unlink(path.join(this._dir(id), `v${i}.html`)).catch(() => {});
+  }
+
+  async rollbackVersion(id, value) {
+    const meta = await this.meta(id);
+    const target = Number.parseInt(value, 10);
+    const selected = meta.versions.find((version) => version.v === target);
+    if (!selected) throw new DraftNotFoundError(`${id} v${target}`);
+    const { stdout: trees } = await this.run(
+      'git',
+      ['rev-parse', 'HEAD^{tree}', `${selected.commit}^{tree}`],
+      { cwd: this.projectDir(id) },
+    );
+    const [currentTree, targetTree] = trees.trim().split('\n');
+    if (currentTree === targetTree) {
+      const error = new Error(`draft source already matches v${target}`);
+      error.status = 409;
+      throw error;
     }
-    meta.versions = meta.versions.slice(0, target);
-    await fs.writeFile(this._metaPath(id), JSON.stringify(meta, null, 2));
-    return { meta, version: target };
+    return this.runVersionTransaction(
+      id,
+      { kind: 'rollback', instruction: `回退到 v${target}` },
+      async (cwd) => {
+        await this.run('git', ['restore', '--source', selected.commit, '--staged', '--worktree', '.'], { cwd });
+        return { summary: `Restored the source tree from v${target}` };
+      },
+    );
+  }
+
+  resolveProjectFile(id, relativeFile) {
+    if (!relativeFile || path.isAbsolute(relativeFile)) throw new InvalidDraftPathError(relativeFile);
+    const project = this.projectDir(id);
+    const resolved = path.resolve(project, relativeFile);
+    if (resolved === project || !resolved.startsWith(`${project}${path.sep}`)) {
+      throw new InvalidDraftPathError(relativeFile);
+    }
+    return resolved;
+  }
+
+  async readSource(id, relativeFile = 'src/App.tsx', version = null) {
+    const meta = await this.meta(id);
+    const normalized = String(relativeFile).replaceAll('\\', '/');
+    const absolute = this.resolveProjectFile(id, normalized);
+    if (!/\.(?:[cm]?[jt]sx?|css|json|html|md)$/.test(normalized)) {
+      throw new InvalidDraftPathError(relativeFile);
+    }
+    let source;
+    if (version == null) {
+      const realProject = await fs.realpath(this.projectDir(id));
+      const realFile = await fs.realpath(absolute).catch(() => null);
+      if (!realFile || !realFile.startsWith(`${realProject}${path.sep}`)) {
+        throw new InvalidDraftPathError(relativeFile);
+      }
+      source = await fs.readFile(realFile, 'utf8');
+    } else {
+      const selected = meta.versions.find((item) => item.v === Number(version));
+      if (!selected) throw new DraftNotFoundError(`${id} v${version}`);
+      const { stdout } = await this.run('git', ['show', `${selected.commit}:${normalized}`], {
+        cwd: this.projectDir(id),
+      });
+      source = stdout;
+    }
+    return { meta, file: normalized, source, version: version ?? meta.versions.length };
+  }
+
+  async versionDiff(id, value) {
+    const meta = await this.meta(id);
+    const selected = meta.versions.find((item) => item.v === Number(value));
+    if (!selected) throw new DraftNotFoundError(`${id} v${value}`);
+    const { stdout } = await this.run(
+      'git',
+      ['show', '--format=fuller', '--stat', '--patch', '--no-ext-diff', selected.commit],
+      { cwd: this.projectDir(id) },
+    );
+    return { version: selected, diff: stdout.slice(0, 200_000) };
   }
 }

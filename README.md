@@ -1,15 +1,23 @@
 # draftly
 
-draftly 是一个可离线运行的 AI 原型编辑器。它支持自然语言生成页面、iframe 实时预览、Inspect 点选编辑、`DESIGN.md` 设计契约、模板应用，以及将现有 React 项目接入编辑器的 CLI 工作流。
+Draftly 是一个本地运行的 AI 源码原型工具。输入页面需求后，Pi 会在独立工作目录中生成
+Vite + React + TypeScript + Tailwind CSS + shadcn/ui 项目。页面通过受控 Vite dev
+server 实时预览，并支持整页迭代、源码级点选修改、截图修改、Git 版本回退和源码 ZIP 导出。
 
-当前实现覆盖原计划的 Phase 1-4。Phase 5 MCP 尚未实现。
+生产链路只使用本机已认证的 Pi CLI，不包含 Mock 页面或 HTML 字符串回退。
 
 ## 环境要求
 
-- Node.js 20 或更高版本
-- npm 10 或更高版本
+- Node.js 20+
+- npm 10+
+- 已安装并认证的 Pi CLI
+- Git
 
-项目当前没有第三方运行时依赖。未配置模型时会自动使用确定性 Mock Provider，因此克隆后可直接运行。
+```bash
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+pi
+# 在 Pi 中完成 /login 后退出
+```
 
 ## 本地运行
 
@@ -18,113 +26,108 @@ npm install
 npm run dev
 ```
 
-打开 <http://127.0.0.1:4173>。
+打开 <http://127.0.0.1:4173>。运行时草稿存放在 `.draftly/drafts/`。
 
-首次访问预览区时，draftly 会在 `.draftly/sandbox` 创建本地沙箱。该目录只保存运行时生成内容，不会提交到 Git。
-
-如需修改端口或沙箱路径：
-
-```bash
-PORT=4300 DRAFTLY_SANDBOX_DIR=/tmp/draftly-sandbox npm run dev
-```
-
-## 接入 OpenAI 兼容模型
-
-默认 Mock Provider 可以演示完整流程。若要调用真实模型，请设置：
-
-```bash
-export DRAFTLY_LLM_BASE_URL="https://your-provider.example/v1"
-export DRAFTLY_LLM_API_KEY="your-api-key"
-export DRAFTLY_LLM_MODEL="gpt-4o-mini" # 可选
-npm run dev
-```
-
-或者把配置写入项目根目录的 `.env`（已 gitignore）：
+可在根目录 `.env` 中覆盖：
 
 ```dotenv
-DRAFTLY_LLM_BASE_URL=https://your-provider.example/v1
-DRAFTLY_LLM_API_KEY=your-api-key
-DRAFTLY_LLM_MODEL=gpt-4o-mini
+HOST=127.0.0.1
+PORT=4173
+DRAFTLY_DRAFTS_DIR=.draftly/drafts
+DRAFTLY_PI_COMMAND=pi
+DRAFTLY_PI_PROVIDER=anthropic
+DRAFTLY_PI_MODEL=claude-sonnet-4-20250514
+DRAFTLY_PI_THINKING=medium
 ```
 
-启动时会自动加载 `.env`，未配置时仍回退到 Mock Provider。
+Pi 未安装、未认证、源码任务失败或项目构建失败时，操作会明确失败并恢复任务前的 Git
+工作树，不会生成假草稿。
 
-## 设计草稿（M1，新）
+## 源码草稿结构
 
-打开 <http://127.0.0.1:4173/drafts.html>：输入一句话描述 → 生成 1~3 个单文件 HTML 设计草稿，
-iframe `srcdoc` 直接渲染（不走 JSX 转译），草稿与版本落盘在 `.draftly/drafts/`。
+```text
+.draftly/drafts/<draft-id>/
+├── meta.json
+└── project/
+    ├── .git/
+    ├── package.json
+    ├── components.json
+    ├── vite.config.ts
+    └── src/
+```
+
+每次成功的生成或修改对应一个 Git commit。`meta.json` 保存用户可见版本号与 commit 的
+映射。回退不会删除历史，而是恢复目标 commit 的文件树后创建新的 rollback commit。
+
+## 点选修改
+
+草稿模板在 Vite 开发模式中通过 `@locator/babel-jsx` 注入 JSX 源位置。iframe 内的
+inspect bridge 负责 hover/click，并通过 `postMessage` 返回源文件、行列、组件名和 DOM
+摘要。服务端使用 TSX AST 提取目标 JSX、所属组件和 imports，再让 Pi 在完整项目上下文中
+修改真实源码。
+
+该流程不使用 `srcdoc`、`data-did` 或 HTML 字符串替换。
+
+## 旧 HTML 草稿迁移
+
+迁移前建议备份 `.draftly/drafts`，然后执行：
 
 ```bash
-curl -X POST http://127.0.0.1:4173/api/draft/generate \
-  -H 'Content-Type: application/json' \
-  -d '{"prompt":"做一个深色科技感的 SaaS 定价页","variants":3}'
+npm run migrate:drafts
 ```
 
-规划详见 [`docs/html-draft-plan.md`](docs/html-draft-plan.md)。旧版 React 原型编辑器仍在 <http://127.0.0.1:4173/>。
+命令逐个读取旧草稿的最新 `vN.html`，让 Pi 转换为 React 源码并运行 build。成功后创建独立
+Git 仓库，原 HTML 与旧 meta 保存在草稿内的 `legacy-backup/`。迁移幂等；已迁移项会跳过，
+单项失败不会阻塞其他草稿，可修复后重试。
 
 ## 常用命令
 
 ```bash
-npm run dev       # 启动编辑器和 API 服务
-npm run build     # 构建编辑器静态资源
-npm test          # 运行全部单元测试
-npm run smoke     # 运行 Phase 1-4 端到端冒烟测试
-npm run check     # build + test + smoke
+npm run dev             # 构建编辑器并启动本地服务
+npm run build           # 构建编辑器和源码草稿模板
+npm test                # 运行全部测试
+npm run smoke           # 真实模板/预览/定位/Git/ZIP 冒烟
+npm run migrate:drafts  # 迁移旧 HTML 草稿
+npm run check           # build + test + smoke
 ```
 
-## Monorepo 结构
+## API
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/drafts/generate` | 生成源码草稿 `{prompt, variants?, style?}` |
+| GET | `/api/drafts` | 草稿列表 |
+| GET | `/api/drafts/:id` | 草稿 metadata、当前版本和默认入口源码 |
+| GET | `/api/drafts/:id/source?file=src/App.tsx` | 读取受限项目源码 |
+| POST | `/api/drafts/:id/preview` | 启动/复用 Vite 预览 |
+| POST | `/api/drafts/:id/iterate` | 整页源码迭代 `{instruction}` |
+| POST | `/api/drafts/:id/edit-source` | 点选修改 `{locator, instruction}` |
+| POST | `/api/drafts/:id/edit-by-image` | 截图修改 `{image, instruction}` |
+| POST | `/api/drafts/:id/rollback` | 基于旧版本创建回退 commit `{v}` |
+| GET | `/api/drafts/:id/versions/:v/diff` | 查看版本 Git diff |
+| GET | `/api/drafts/:id/export` | 下载源码 ZIP |
+| GET | `/api/templates` | 风格预设列表 |
+| GET | `/api/templates/:id` | 风格预设详情 |
+| POST | `/api/extract` | 从 `{html, css}` 或 `{url}` 提取设计系统 |
+
+生成、迭代、点选、截图和回退接口可追加 `?stream=1`，以 NDJSON 依次返回 scaffold、依赖
+安装、Pi read/edit/write/bash、构建、Git commit 和 preview 等过程事件。
+
+## Monorepo
 
 ```text
 packages/
-├── editor/   原生 ESM 编辑器 SPA、组件面板、预览、Inspect、属性与代码面板
-├── server/   API、沙箱、预览服务、源码 patch、历史、设计提取与模板库
-├── shared/   DESIGN.md、组件注册表、Inspect 协议与 LLM Provider
-└── cli/      项目检测、bridge 代理以及草稿/本地双向同步
-scripts/      Phase 1-4 端到端冒烟脚本
-docs/         原始需求、Kimi 计划与规格说明
-progress/     各阶段任务实现与验证记录
+├── draft-template/  生成项目的 Vite/React/TS/Tailwind/shadcn 模板与 inspect bridge
+├── editor/          Draftly React 编辑器
+├── server/          Pi workspace 执行、Git 存储、预览进程、Locator/API/迁移
+└── shared/          DESIGN.md 解析与校验
+scripts/
+└── smoke-draft.mjs  源码草稿全链路冒烟
 ```
 
-## CLI
+## 安全边界
 
-安装依赖后，可以通过 workspace bin 运行 CLI：
-
-```bash
-npm exec -- draftly init --dir /path/to/react-app
-npm exec -- draftly bridge --target http://localhost:3000 --port 4600 --dir /path/to/react-app
-npm exec -- draftly sync --to-local --strategy merge --local /path/to/react-app
-```
-
-也可以直接执行 `node packages/cli/src/index.js`。
-
-CLI 支持：
-
-- `init`：识别 React、Vue、Next.js 和样式方案，生成 `DESIGN.md` 与组件注册表
-- `bridge`：代理已有 dev server，注入 Inspect 脚本并开放受限文件 API
-- `sync`：使用 `overwrite`、`merge` 或 `patch` 策略同步草稿与本地项目
-
-## 实现说明
-
-为保证离线可运行，当前版本使用以下降级方案：
-
-| 原计划 | 当前实现 |
-| --- | --- |
-| Vite dev server | 检测到沙箱 Vite 时使用 Vite，否则使用内置 preview server |
-| recast / Babel | 使用括号和引号感知的源码扫描器，保留未修改区域格式 |
-| Playwright 抓取 | 核心提取算法接收 HTML/CSS；URL 抓取作为可选增强 |
-| WebSocket bridge | 使用 SSE reload 通道兜底 |
-| 真实 LLM | 默认 Mock Provider，可切换 OpenAI 兼容接口 |
-
-## 文档
-
-- [`docs/original-plan.md`](docs/original-plan.md)：原始开发计划
-- [`docs/kimi-plan.md`](docs/kimi-plan.md)：Kimi 的执行计划
-- [`docs/SPEC.md`](docs/SPEC.md)：实现规格
-- [`progress/`](progress/)：分阶段验证记录
-
-## 已知限制
-
-- JSX 转译器只支持安全子集；复杂动态 `className` 会明确报错
-- 模板配色为人工策展数据，不代表实时抓取结果
-- `sync` 不删除仅存在于本地的文件
-- Phase 5 MCP Server 尚未实现
+- 草稿路径、源码读取和导出限制在对应 `project/` 内，并拒绝 symlink 越界。
+- Vite dev server 仅绑定 `127.0.0.1`，按草稿懒启动并回收。
+- Pi 具有草稿 cwd 下的 `read/edit/write/bash` 工具。cwd 不是操作系统级沙箱；只应在可信的
+  本地环境运行 Draftly。

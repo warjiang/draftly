@@ -1,8 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDesignMd, serializeDesignMd, defaultDesignMd, validateDesignMd } from '../src/design-md.js';
-import { loadRegistry, loadBuiltinRegistry, validateRegistry, componentIndex, findComponent } from '../src/registry.js';
-import { MockProvider, createProvider, LLMProvider } from '../src/llm.js';
 
 test('parseDesignMd / serializeDesignMd 往返', () => {
   const src = defaultDesignMd();
@@ -65,56 +63,4 @@ test('parseDesignMd 无 frontmatter 容错', () => {
   const { meta, body } = parseDesignMd('# hello\n正文');
   assert.deepEqual(meta, {});
   assert.match(body, /hello/);
-});
-
-test('registry：内置 registry 合法且含 20 个组件', () => {
-  const reg = loadBuiltinRegistry();
-  assert.equal(reg.components.length, 20);
-  assert.ok(findComponent(reg, 'Button'));
-  assert.ok(findComponent(reg, 'Dialog'));
-  assert.ok(findComponent(reg, 'Tabs'));
-  assert.match(componentIndex(reg), /Button \(from "@\/components\/ui\/button"\)/);
-});
-
-test('validateRegistry 报错场景', () => {
-  assert.deepEqual(validateRegistry({ components: [] }), []);
-  const bad = {
-    components: [
-      { name: 'button', import: 'react' },                 // 名字非 PascalCase + import 非法
-      { name: 'Button', import: '@/components/ui/button' },
-      { name: 'Button', import: '@/components/ui/button' }, // 重名
-      { name: 'X', import: '@/x', variants: 'oops' },       // variants 非数组
-    ],
-  };
-  const errors = validateRegistry(bad);
-  assert.ok(errors.some((e) => e.includes('PascalCase')));
-  assert.ok(errors.some((e) => e.includes('import')));
-  assert.ok(errors.some((e) => e.includes('duplicated')));
-  assert.ok(errors.some((e) => e.includes('variants')));
-  assert.throws(() => loadRegistry(JSON.stringify(bad)), /invalid registry/);
-});
-
-test('MockProvider 确定性：登录/仪表盘/落地页', async () => {
-  const p = new MockProvider();
-  const mk = (s) => [{ role: 'user', content: s }];
-  const login1 = await p.complete(mk('做一个登录页'));
-  const login2 = await p.complete(mk('帮我做个 login 页面'));
-  assert.equal(login1, login2); // 确定性
-  assert.match(login1, /export default function App/);
-  assert.match(login1, /登录/);
-  assert.match(login1, /from '@\/components\/ui\/input'/);
-  const dash = await p.complete(mk('做一个数据仪表盘'));
-  assert.match(dash, /仪表盘/);
-  assert.match(dash, /Table/);
-  const land = await p.complete(mk('做一个产品落地页'));
-  assert.match(land, /落地|AI|免费开始/);
-  const other = await p.complete(mk('随便一个页面'));
-  assert.match(other, /export default function App/);
-});
-
-test('createProvider 无 key → MockProvider', () => {
-  delete process.env.DRAFTLY_LLM_API_KEY;
-  delete process.env.DRAFTLY_LLM_BASE_URL;
-  assert.ok(createProvider() instanceof MockProvider);
-  assert.ok(createProvider() instanceof LLMProvider);
 });

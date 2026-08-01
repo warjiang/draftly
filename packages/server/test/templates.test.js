@@ -3,11 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { MockProvider } from '../../shared/src/llm.js';
 import { parseDesignMd } from '../../shared/src/design-md.js';
-import { SandboxManager } from '../src/sandbox-manager.js';
+import { DraftStore } from '../src/drafts.js';
 import { createApiServer } from '../src/http.js';
-import { loadTemplates, validateTemplate, templateSummary, applyTemplate } from '../src/templates.js';
+import { loadTemplates, validateTemplate, templateSummary } from '../src/templates.js';
 
 test('模板库加载 10 个且全部通过 schema 校验', async () => {
   const all = await loadTemplates();
@@ -41,18 +40,21 @@ test('templateSummary 含色板预览数据', async () => {
   assert.deepEqual(s.tags.color, ['紫', '蓝']);
 });
 
-/* ---------- HTTP 集成：apply → DESIGN.md 变更 + undo 还原 ---------- */
+/* ---------- HTTP 集成：模板列表 + 详情（M4 风格预设数据源） ---------- */
 
-let tmp, server, base, mgr;
+let tmp, server, base;
 before(async () => {
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-tpl-'));
-  mgr = new SandboxManager({ rootDir: path.join(tmp, 'proj') });
-  server = createApiServer({ sandboxManager: mgr, provider: new MockProvider() });
+  const drafts = new DraftStore({ rootDir: path.join(tmp, 'drafts') });
+  server = createApiServer({
+    provider: { runTask: async () => 'unused' },
+    drafts,
+    previewManager: { ensure: async () => ({}), shutdown: async () => {} },
+  });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
-  await mgr.sandbox().stop().catch(() => {});
   server.closeAllConnections?.();
   await new Promise((r) => server.close(r));
   await fs.rm(tmp, { recursive: true, force: true });
@@ -74,35 +76,4 @@ test('GET /api/templates 列表 + GET /api/templates/:id 详情', async () => {
   assert.match(detail.data.designMd, /#635bff/);
   const missing = await api('/api/templates/nope');
   assert.equal(missing.status, 404);
-});
-
-test('POST /api/templates/apply → DESIGN.md 变更；undo 还原', async () => {
-  const before = (await api('/api/design-md')).data.content;
-  assert.match(before, /#3f4a5a/); // 默认主题
-  const r = await api('/api/templates/apply', 'POST', { id: 'stripe' });
-  assert.equal(r.status, 200, JSON.stringify(r.data));
-  assert.equal(r.data.applied, 'DESIGN.md');
-  const afterApply = (await api('/api/design-md')).data.content;
-  assert.match(afterApply, /#635bff/); // Stripe 主色
-  assert.notEqual(afterApply, before);
-  // undo 还原默认主题
-  const undo = await api('/api/history/undo', 'POST');
-  assert.equal(undo.status, 200);
-  assert.equal((await api('/api/design-md')).data.content, before);
-  // 未知 id → 404
-  const bad = await api('/api/templates/apply', 'POST', { id: 'nope' });
-  assert.equal(bad.status, 404);
-});
-
-test('apply + regenerate：生成页面使用模板配色（确定性 Mock 映射）', async () => {
-  const r = await api('/api/templates/apply', 'POST', { id: 'stripe', regenerate: true, prompt: '做一个落地页' });
-  assert.equal(r.status, 200);
-  assert.equal(r.data.regenerated, 'src/App.jsx');
-  const app = (await api('/api/file?path=src/App.jsx')).data.content;
-  assert.match(app, /design-tokens: primary=#635bff/);
-  assert.match(app, /background: '#635bff'/);
-  // undo 两次（regenerate + apply）还原
-  await api('/api/history/undo', 'POST');
-  await api('/api/history/undo', 'POST');
-  assert.match((await api('/api/design-md')).data.content, /#3f4a5a/);
 });
