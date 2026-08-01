@@ -4,16 +4,45 @@ import { buildGenerateInstruction } from './draft-prompts.js';
 import { DraftStore } from './drafts.js';
 import { runCommand } from './process.js';
 import { assertNoEscapingSymlinks } from './source-locator.js';
+import type {
+  CommandRunner,
+  DraftMeta,
+  ProgressEvent,
+  ProgressHandler,
+  WorkspaceProvider,
+} from './types.js';
+import { errorWithStatus } from './types.js';
 
-async function legacyVersionFiles(directory) {
+type LegacyVersionFile = {
+  name: string;
+  match: RegExpExecArray;
+};
+
+type LegacyMeta = Partial<DraftMeta> & {
+  id?: string;
+  title?: string;
+  prompt?: string;
+  createdAt?: string;
+};
+
+export type MigrationResult =
+  | { id: string; status: 'skipped' }
+  | { id: string; status: 'migrated'; version: number }
+  | { id: string; status: 'failed'; error: string };
+
+async function legacyVersionFiles(directory: string): Promise<LegacyVersionFile[]> {
   const names = await fs.readdir(directory);
   return names
     .map((name) => ({ name, match: /^v(\d+)\.html$/.exec(name) }))
-    .filter((item) => item.match)
+    .filter((item): item is LegacyVersionFile => item.match !== null)
     .sort((a, b) => Number(a.match[1]) - Number(b.match[1]));
 }
 
-async function recordFailure(metaPath, meta, error) {
+async function recordFailure(
+  metaPath: string,
+  meta: LegacyMeta,
+  error: Error,
+): Promise<void> {
   const next = {
     ...meta,
     migration: {
@@ -33,14 +62,22 @@ async function migrateOne({
   installDependencies,
   commandRunner,
   onProgress,
-}) {
+}: {
+  rootDir: string;
+  id: string;
+  provider: WorkspaceProvider;
+  templateDir?: string;
+  installDependencies: boolean;
+  commandRunner: CommandRunner;
+  onProgress?: ProgressHandler;
+}): Promise<MigrationResult> {
   const legacyDir = path.join(rootDir, id);
   const metaPath = path.join(legacyDir, 'meta.json');
-  const legacyMeta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+  const legacyMeta = JSON.parse(await fs.readFile(metaPath, 'utf8')) as LegacyMeta;
   if (legacyMeta.format === 'vite-react') return { id, status: 'skipped' };
   const versions = await legacyVersionFiles(legacyDir);
   if (!versions.length) throw new Error(`legacy draft has no HTML versions: ${id}`);
-  const latest = versions.at(-1);
+  const latest = versions.at(-1)!;
   const html = await fs.readFile(path.join(legacyDir, latest.name), 'utf8');
   const stagingRoot = path.join(rootDir, '.migration-work');
   const staging = new DraftStore({
@@ -114,10 +151,11 @@ async function migrateOne({
     }
     await staging.remove(stagedMeta.id);
     return { id, status: 'migrated', version: result.version };
-  } catch (error) {
+  } catch (error: unknown) {
+    const knownError = errorWithStatus(error);
     await staging.remove(stagedMeta.id).catch(() => {});
-    await recordFailure(metaPath, legacyMeta, error);
-    throw error;
+    await recordFailure(metaPath, legacyMeta, knownError);
+    throw knownError;
   }
 }
 
@@ -128,17 +166,25 @@ export async function migrateLegacyDrafts({
   installDependencies = true,
   commandRunner = runCommand,
   onProgress,
-}) {
+}: {
+  rootDir: string;
+  provider: WorkspaceProvider;
+  templateDir?: string;
+  installDependencies?: boolean;
+  commandRunner?: CommandRunner;
+  onProgress?: (event: ProgressEvent & { id: string }) => void;
+}): Promise<MigrationResult[]> {
   if (!provider?.runTask) throw new Error('Pi workspace executor is required for migration');
   const absoluteRoot = path.resolve(rootDir);
   let entries = [];
   try {
     entries = await fs.readdir(absoluteRoot, { withFileTypes: true });
-  } catch (error) {
-    if (error.code === 'ENOENT') return [];
-    throw error;
+  } catch (error: unknown) {
+    const knownError = errorWithStatus(error);
+    if (knownError.code === 'ENOENT') return [];
+    throw knownError;
   }
-  const results = [];
+  const results: MigrationResult[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || !/^[a-z0-9][a-z0-9-]*$/.test(entry.name)) continue;
     try {
@@ -152,8 +198,12 @@ export async function migrateLegacyDrafts({
         onProgress: (event) => onProgress?.({ id: entry.name, ...event }),
       });
       results.push(result);
-    } catch (error) {
-      results.push({ id: entry.name, status: 'failed', error: error.message });
+    } catch (error: unknown) {
+      results.push({
+        id: entry.name,
+        status: 'failed',
+        error: errorWithStatus(error).message,
+      });
     }
   }
   await fs.rm(path.join(absoluteRoot, '.migration-work'), { recursive: true, force: true });

@@ -17,21 +17,23 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateDesignMd, parseDesignMd } from '../../shared/src/design-md.js';
+import type { DesignTemplate } from './types.js';
 
 const TEMPLATES_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../data/templates');
 const TAG_KEYS = ['style', 'industry', 'color'];
 
 /** @returns {string[]} 错误列表，空 = 通过 */
-export function validateTemplate(t) {
+export function validateTemplate(value: unknown): string[] {
   const errors = [];
-  if (!t || typeof t !== 'object') return ['template must be object'];
+  if (!value || typeof value !== 'object') return ['template must be object'];
+  const t = value as Partial<DesignTemplate>;
   if (!/^[a-z0-9][a-z0-9-]*$/.test(t.id || '')) errors.push(`invalid id: ${t.id}`);
   if (!t.name || typeof t.name !== 'string') errors.push('name required');
   if (t.sourceUrl && !/^https?:\/\//.test(t.sourceUrl)) errors.push(`invalid sourceUrl: ${t.sourceUrl}`);
   if (!t.tags || typeof t.tags !== 'object') {
     errors.push('tags required ({ style, industry, color })');
   } else {
-    for (const k of TAG_KEYS) {
+    for (const k of TAG_KEYS as Array<keyof DesignTemplate['tags']>) {
       if (!Array.isArray(t.tags[k])) errors.push(`tags.${k} must be array`);
     }
   }
@@ -49,11 +51,11 @@ export function validateTemplate(t) {
  * 任一模板非法 → 抛错（数据即代码，宁可 fail-fast）。
  * @returns {Promise<Array<object>} Promise<object>[]>}
  */
-export async function loadTemplates(dir = TEMPLATES_DIR) {
+export async function loadTemplates(dir: string = TEMPLATES_DIR): Promise<DesignTemplate[]> {
   const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.json')).sort();
-  const templates = [];
+  const templates: DesignTemplate[] = [];
   for (const f of files) {
-    const t = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8'));
+    const t = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')) as DesignTemplate;
     const errors = validateTemplate(t);
     if (errors.length) throw new Error(`invalid template ${f}: ${errors.join('; ')}`);
     templates.push(t);
@@ -67,16 +69,21 @@ export async function loadTemplates(dir = TEMPLATES_DIR) {
 }
 
 /** 列表摘要（不含 designMd 全文；附色板供编辑器预览） */
-export function templateSummary(t) {
+export function templateSummary(t: DesignTemplate): Omit<DesignTemplate, 'designMd'> & {
+  colors: Record<string, string>;
+} {
   const { meta } = parseDesignMd(t.designMd);
   return {
     id: t.id, name: t.name, sourceUrl: t.sourceUrl, tags: t.tags,
     confidence: t.confidence, screenshot: t.screenshot ?? null,
-    colors: meta.colors || {},
+    colors: meta.colors ?? {},
   };
 }
 
-export async function getTemplate(id, dir = TEMPLATES_DIR) {
+export async function getTemplate(
+  id: string,
+  dir: string = TEMPLATES_DIR,
+): Promise<DesignTemplate | null> {
   const all = await loadTemplates(dir);
   return all.find((t) => t.id === id) || null;
 }

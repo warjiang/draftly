@@ -21,17 +21,43 @@
  * 同输入永远同输出。
  */
 import { defaultDesignMd, parseDesignMd } from '../../shared/src/design-md.js';
+import { errorWithStatus } from './types.js';
+
+type Rgb = [number, number, number];
+type ColorRole = 'primary' | 'background' | 'surface' | 'text' | 'neutral';
+type ColorCluster = {
+  hex: string;
+  share: number;
+  role?: ColorRole;
+};
+type AssignedColorCluster = ColorCluster & { role: ColorRole };
+type Typography = {
+  fontFamily: string;
+  scale: Record<string, string>;
+};
+type ExtractedTokens = {
+  colors: AssignedColorCluster[];
+  typography: Typography;
+  spacing: { unit: string; values: string[] };
+  radius: { mode: string; values: string[] };
+  shadows: { mode: string; values: string[] };
+};
+type ExtractedDesign = {
+  designMd: string;
+  tokens: ExtractedTokens;
+  tailwindCss: string;
+};
 
 /* ================= 颜色：归一化 + 聚类 ================= */
 
-const NAMED_COLORS = {
+const NAMED_COLORS: Record<string, string | null> = {
   black: '#000000', white: '#ffffff', transparent: null, red: '#ff0000',
   green: '#008000', blue: '#0000ff', gray: '#808080', grey: '#808080',
   orange: '#ffa500', yellow: '#ffff00', purple: '#800080', pink: '#ffc0cb',
 };
 
 /** hex/rgb(a)/hsl(a)/常见命名色 → '#rrggbb'；无法解析 → null */
-export function normalizeColor(raw) {
+export function normalizeColor(raw: unknown): string | null {
   if (!raw) return null;
   let s = String(raw).trim().toLowerCase();
   if (NAMED_COLORS[s] !== undefined) return NAMED_COLORS[s];
@@ -44,7 +70,8 @@ export function normalizeColor(raw) {
   }
   m = /^rgba?\(\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*[, ]\s*([\d.]+)/.exec(s);
   if (m) {
-    const to = (v) => Math.max(0, Math.min(255, Math.round(Number(v)))).toString(16).padStart(2, '0');
+    const to = (v: string) =>
+      Math.max(0, Math.min(255, Math.round(Number(v)))).toString(16).padStart(2, '0');
     return '#' + to(m[1]) + to(m[2]) + to(m[3]);
   }
   m = /^hsla?\(\s*([\d.]+)(?:deg)?\s*[, ]\s*([\d.]+)%\s*[, ]\s*([\d.]+)%/.exec(s);
@@ -52,7 +79,7 @@ export function normalizeColor(raw) {
   return null;
 }
 
-export function hslToHex(h, s, l) {
+export function hslToHex(h: number, s: number, l: number): string {
   h = ((h % 360) + 360) % 360;
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
@@ -64,13 +91,13 @@ export function hslToHex(h, s, l) {
   else if (h < 240) [r, g, b] = [0, x, c];
   else if (h < 300) [r, g, b] = [x, 0, c];
   else [r, g, b] = [c, 0, x];
-  const to = (v) => Math.round((v + m0) * 255).toString(16).padStart(2, '0');
+  const to = (v: number) => Math.round((v + m0) * 255).toString(16).padStart(2, '0');
   return '#' + to(r) + to(g) + to(b);
 }
 
 /** 从 css 文本提取全部颜色（含频次，排除渐变外的 currentColor 等无效值） */
-export function extractColors(css) {
-  const freq = new Map();
+export function extractColors(css: string): Map<string, number> {
+  const freq = new Map<string, number>();
   const re = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)|\b(?:black|white|red|green|blue|gray|grey|orange|yellow|purple|pink)\b/g;
   for (const m of css.matchAll(re)) {
     const hex = normalizeColor(m[0]);
@@ -79,8 +106,10 @@ export function extractColors(css) {
   return freq; // Map<hex, count>
 }
 
-const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-const dist2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+const rgbOf = (hex: string): Rgb =>
+  [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as Rgb;
+const dist2 = (a: Rgb, b: Rgb): number =>
+  (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
 
 /**
  * 确定性 K-means（欧氏 RGB 距离）：
@@ -89,14 +118,21 @@ const dist2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) 
  * - 固定 25 轮迭代，频次加权质心
  * @returns {Array<{ hex: string, share: number }>} 按 share 降序
  */
-export function clusterColors(freq, { minK = 4, maxK = 8, iterations = 25 } = {}) {
+export function clusterColors(
+  freq: Map<string, number>,
+  {
+    minK = 4,
+    maxK = 8,
+    iterations = 25,
+  }: { minK?: number; maxK?: number; iterations?: number } = {},
+): ColorCluster[] {
   const entries = [...freq.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const total = entries.reduce((s, [, c]) => s + c, 0);
   if (!entries.length || !total) return [];
   const unique = entries.length;
   const k = Math.max(Math.min(Math.max(minK, Math.ceil(unique / 2)), maxK, unique), 1);
   // 等距取初始中心（确定性 seed）
-  let centers = [];
+  let centers: Rgb[] = [];
   for (let i = 0; i < k; i++) {
     centers.push(rgbOf(entries[Math.floor((i * unique) / k)][0]));
   }
@@ -112,7 +148,8 @@ export function clusterColors(freq, { minK = 4, maxK = 8, iterations = 25 } = {}
       }
       if (assign[i] !== best) { assign[i] = best; moved = true; }
     }
-    const sums = centers.map(() => [0, 0, 0, 0]); // r,g,b,weight
+    const sums: Array<[number, number, number, number]> =
+      centers.map(() => [0, 0, 0, 0]); // r,g,b,weight
     for (let i = 0; i < points.length; i++) {
       const s = sums[assign[i]];
       s[0] += points[i].rgb[0] * points[i].count;
@@ -120,11 +157,15 @@ export function clusterColors(freq, { minK = 4, maxK = 8, iterations = 25 } = {}
       s[2] += points[i].rgb[2] * points[i].count;
       s[3] += points[i].count;
     }
-    centers = sums.map((s, c) => (s[3] ? [s[0] / s[3], s[1] / s[3], s[2] / s[3]] : centers[c]));
+    centers = sums.map((s, c): Rgb =>
+      s[3] ? [s[0] / s[3], s[1] / s[3], s[2] / s[3]] : centers[c]);
     if (!moved && it > 0) break;
   }
   // 汇总簇；代表色取簇内频次最高的原始颜色（medoid），比质心更忠实于原站配色
-  const clusters = centers.map(() => ({ weight: 0, members: [] }));
+  const clusters: Array<{
+    weight: number;
+    members: Array<{ hex: string; count: number }>;
+  }> = centers.map(() => ({ weight: 0, members: [] }));
   for (let i = 0; i < points.length; i++) {
     const cl = clusters[assign[i]];
     cl.weight += points[i].count;
@@ -140,10 +181,16 @@ export function clusterColors(freq, { minK = 4, maxK = 8, iterations = 25 } = {}
 }
 
 /** 簇 → 语义角色：primary=饱和度最高簇；background=占比最高簇；text=与 background 距离最远簇 */
-export function assignColorRoles(clusters) {
+export function assignColorRoles(clusters: ColorCluster[]): AssignedColorCluster[] {
   if (!clusters.length) return [];
-  const sat = (hex) => { const [r, g, b] = rgbOf(hex); return Math.max(r, g, b) - Math.min(r, g, b); };
-  const lum = (hex) => { const [r, g, b] = rgbOf(hex); return 0.299 * r + 0.587 * g + 0.114 * b; };
+  const sat = (hex: string): number => {
+    const [r, g, b] = rgbOf(hex);
+    return Math.max(r, g, b) - Math.min(r, g, b);
+  };
+  const lum = (hex: string): number => {
+    const [r, g, b] = rgbOf(hex);
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  };
   const primary = [...clusters].sort((a, b) => sat(b.hex) - sat(a.hex) || b.share - a.share)[0];
   // background：低饱和且明度极端（近黑/近白）的簇中 share 最高者；兜底 share 最高非 primary 簇
   const extremes = clusters
@@ -162,7 +209,7 @@ export function assignColorRoles(clusters) {
 }
 
 /** 两个 hex 按 t ∈ [0,1] 混合 */
-export function mixHex(a, b, t) {
+export function mixHex(a: string, b: string, t: number): string {
   const A = rgbOf(a), B = rgbOf(b);
   return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('');
 }
@@ -170,19 +217,19 @@ export function mixHex(a, b, t) {
 /* ================= 字体层级 ================= */
 
 /** font-size 频率 → 层级：body=频率最高；大于 body 的降序映射 h1..h6；小于 body → small */
-export function extractTypography(css) {
-  const sizeFreq = new Map();
+export function extractTypography(css: string): Typography {
+  const sizeFreq = new Map<string, number>();
   for (const m of css.matchAll(/font-size\s*:\s*([\d.]+)px/g)) {
     sizeFreq.set(m[1], (sizeFreq.get(m[1]) || 0) + 1);
   }
-  const famFreq = new Map();
+  const famFreq = new Map<string, number>();
   for (const m of css.matchAll(/font-family\s*:\s*([^;}]+)/g)) {
     const first = m[1].split(',')[0].trim().replace(/^['"]|['"]$/g, '');
     if (first && !/^(inherit|initial|unset)$/i.test(first)) famFreq.set(first, (famFreq.get(first) || 0) + 1);
   }
   const fontFamily = [...famFreq.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
     || '-apple-system, "Segoe UI", sans-serif';
-  const scale = {};
+  const scale: Record<string, string> = {};
   if (sizeFreq.size) {
     const byFreq = [...sizeFreq.entries()].sort((a, b) => b[1] - a[1] || Number(b[0]) - Number(a[0]));
     const bodySize = Number(byFreq[0][0]);
@@ -199,11 +246,11 @@ export function extractTypography(css) {
 
 /* ================= 间距基数（GCD） ================= */
 
-const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 
 /** padding/margin 数值集合 → GCD 基础间距（clamp 到 2–16，失败回退 8） */
-export function extractSpacing(css) {
-  const values = new Set();
+export function extractSpacing(css: string): { unit: string; values: string[] } {
+  const values = new Set<number>();
   for (const m of css.matchAll(/(?:padding|margin)(?:-[a-z]+)?\s*:\s*([^;}]+)/g)) {
     for (const n of m[1].matchAll(/([\d.]+)px/g)) {
       const v = Number(n[1]);
@@ -221,8 +268,8 @@ export function extractSpacing(css) {
 
 /* ================= radius / shadow 众数 ================= */
 
-export function extractRadius(css) {
-  const freq = new Map();
+export function extractRadius(css: string): { mode: string; values: string[] } {
+  const freq = new Map<string, number>();
   for (const m of css.matchAll(/border-radius\s*:\s*([^;}]+)/g)) {
     const v = m[1].trim();
     freq.set(v, (freq.get(v) || 0) + 1);
@@ -231,8 +278,8 @@ export function extractRadius(css) {
   return { mode: values[0] || '8px', values };
 }
 
-export function extractShadows(css) {
-  const freq = new Map();
+export function extractShadows(css: string): { mode: string; values: string[] } {
+  const freq = new Map<string, number>();
   for (const m of css.matchAll(/box-shadow\s*:\s*([^;}]+)/g)) {
     const v = m[1].trim().replace(/\s+/g, ' ');
     if (v !== 'none') freq.set(v, (freq.get(v) || 0) + 1);
@@ -247,7 +294,13 @@ export function extractShadows(css) {
  * @param {{ html?: string, cssTexts: string[] }} input
  * @returns {{ designMd: string, tokens: object, tailwindCss: string }}
  */
-export function extractDesign({ html = '', cssTexts = [] } = {}) {
+export function extractDesign({
+  html = '',
+  cssTexts = [],
+}: {
+  html?: string;
+  cssTexts?: string[];
+} = {}): ExtractedDesign {
   const css = [...cssTexts].join('\n');
   // html 内联 style 也并入提取语料
   const inline = [...html.matchAll(/style="([^"]*)"/g)].map((m) => m[1]).join('\n');
@@ -259,7 +312,8 @@ export function extractDesign({ html = '', cssTexts = [] } = {}) {
   const radius = extractRadius(corpus);
   const shadows = extractShadows(corpus);
 
-  const byRole = (r) => clusters.find((c) => c.role === r)?.hex;
+  const byRole = (role: ColorRole): string | undefined =>
+    clusters.find((cluster) => cluster.role === role)?.hex;
   const background = byRole('background') || '#ffffff';
   const primary = byRole('primary') || '#3f4a5a';
   const text = byRole('text') || '#2e2e2c';
@@ -320,7 +374,10 @@ export function extractDesign({ html = '', cssTexts = [] } = {}) {
  * fetch 真实网页 HTML + CSS（<style> 与 link[rel=stylesheet]）。
  * 离线/失败时抛出带引导信息的错误（HTTP 层映射 501）。
  */
-export async function fetchSiteAssets(url, { timeoutMs = 8000 } = {}) {
+export async function fetchSiteAssets(
+  url: string,
+  { timeoutMs = 8000 }: { timeoutMs?: number } = {},
+): Promise<{ html: string; cssTexts: string[] }> {
   let parsed;
   try { parsed = new URL(url); } catch { throw new Error(`invalid url: ${url}`); }
   if (!/^https?:$/.test(parsed.protocol)) throw new Error('only http(s) url supported');
@@ -332,7 +389,8 @@ export async function fetchSiteAssets(url, { timeoutMs = 8000 } = {}) {
     const html = await res.text();
     const cssTexts = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
     const links = [...html.matchAll(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi)]
-      .map((m) => /href=["']([^"']+)["']/i.exec(m[0])?.[1]).filter(Boolean);
+      .map((m) => /href=["']([^"']+)["']/i.exec(m[0])?.[1])
+      .filter((href): href is string => Boolean(href));
     for (const href of links.slice(0, 8)) {
       try {
         const cssRes = await fetch(new URL(href, url).href, { signal: ctrl.signal });
@@ -340,9 +398,11 @@ export async function fetchSiteAssets(url, { timeoutMs = 8000 } = {}) {
       } catch { /* 单个样式表失败不阻塞 */ }
     }
     return { html, cssTexts };
-  } catch (e) {
-    const err = new Error(
-      `无法抓取 ${url}（${e.message}）。当前环境可能无网络：请改用 POST /api/extract { html, css } 直接粘贴页面源码。`);
+  } catch (error: unknown) {
+    const cause = errorWithStatus(error);
+    const err = errorWithStatus(new Error(
+      `无法抓取 ${url}（${cause.message}）。当前环境可能无网络：请改用 POST /api/extract { html, css } 直接粘贴页面源码。`,
+    ));
     err.code = 'EXTRACT_OFFLINE';
     throw err;
   } finally {

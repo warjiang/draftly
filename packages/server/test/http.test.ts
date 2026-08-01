@@ -4,11 +4,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DraftStore } from '../src/drafts.js';
-import { createApiServer } from '../src/http.js';
+import { createApiApp } from '../src/http.js';
 
-let temporaryRoot;
-let server;
-let base;
+let temporaryRoot: string;
+let app: ReturnType<typeof createApiApp>['app'];
 
 before(async () => {
   temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-http-tests-'));
@@ -19,38 +18,39 @@ before(async () => {
     rootDir: path.join(temporaryRoot, 'drafts'),
     installDependencies: false,
   });
-  server = createApiServer({
+  ({ app } = createApiApp({
     drafts,
     editorDir,
     provider: { runTask: async () => 'unused' },
-    previewManager: { ensure: async () => ({}), shutdown: async () => {} },
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  base = `http://127.0.0.1:${server.address().port}`;
+    previewManager: {
+      ensure: async () => ({ url: 'http://127.0.0.1/', token: 'test', status: 'ready' }),
+      shutdown: async () => {},
+    },
+  }));
 });
 
 after(async () => {
-  await new Promise((resolve) => server.close(resolve));
   await fs.rm(temporaryRoot, { recursive: true, force: true });
 });
 
 test('serves the Vite editor entry', async () => {
-  const response = await fetch(`${base}/`);
+  const response = await app.request('/');
   assert.equal(response.status, 200);
   assert.match(await response.text(), /id="root"/);
 });
 
 test('serves template details and rejects an unknown template', async () => {
-  const list = await fetch(`${base}/api/templates`).then((response) => response.json());
+  const listResponse = await app.request('/api/templates');
+  const list = await listResponse.json() as { templates: Array<{ id: string }> };
   assert.ok(list.templates.length > 0);
-  const detail = await fetch(`${base}/api/templates/${list.templates[0].id}`);
+  const detail = await app.request(`/api/templates/${list.templates[0].id}`);
   assert.equal(detail.status, 200);
-  assert.ok((await detail.json()).designMd);
-  assert.equal((await fetch(`${base}/api/templates/nope`)).status, 404);
+  assert.ok((await detail.json() as { designMd?: string }).designMd);
+  assert.equal((await app.request('/api/templates/nope')).status, 404);
 });
 
 test('extracts a design offline and validates request bodies', async () => {
-  const response = await fetch(`${base}/api/extract`, {
+  const response = await app.request('/api/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -61,11 +61,21 @@ test('extracts a design offline and validates request bodies', async () => {
   assert.equal(response.status, 200);
   assert.ok((await response.json()).designMd);
 
-  const invalid = await fetch(`${base}/api/extract`, {
+  const invalid = await app.request('/api/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: '{',
   });
   assert.equal(invalid.status, 400);
-  assert.equal((await fetch(`${base}/api/no-such-route`)).status, 404);
+  assert.equal((await app.request('/api/no-such-route')).status, 404);
+});
+
+test('rejects API request bodies larger than 10 MB', async () => {
+  const response = await app.request('/api/extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html: 'x'.repeat(10_000_001) }),
+  });
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: 'body too large' });
 });

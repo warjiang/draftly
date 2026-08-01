@@ -4,16 +4,45 @@ import {
   buildIterateInstruction,
   buildSourceEditInstruction,
 } from './draft-prompts.js';
+import type { DraftStore } from './drafts.js';
 import { assertNoEscapingSymlinks, sourceContextForLocator } from './source-locator.js';
+import type {
+  CommandRunner,
+  ProgressHandler,
+  SourceLocator,
+  WorkspaceProvider,
+} from './types.js';
 
 export const MAX_VARIANTS = 3;
 
-function workspaceExecutor(provider) {
+type DraftResult = {
+  id: string;
+  title: string;
+  version: number;
+};
+
+type VersionTaskOptions = {
+  drafts: DraftStore;
+  provider?: WorkspaceProvider;
+  id: string;
+  kind: string;
+  instruction: string;
+  taskInstruction: string;
+  images?: string[];
+  onProgress?: ProgressHandler;
+  variant?: number;
+};
+
+function workspaceExecutor(provider?: WorkspaceProvider): WorkspaceProvider {
   if (!provider?.runTask) throw new Error('Pi workspace executor is required');
   return provider;
 }
 
-async function validateProject(projectDir, commandRunner, onProgress) {
+async function validateProject(
+  projectDir: string,
+  commandRunner: CommandRunner,
+  onProgress?: ProgressHandler,
+): Promise<void> {
   onProgress?.({ type: 'pipeline', stage: 'validation_started' });
   await assertNoEscapingSymlinks(projectDir);
   await commandRunner('npm', ['run', 'build'], { cwd: projectDir });
@@ -30,7 +59,7 @@ async function executeVersionTask({
   images = [],
   onProgress,
   variant,
-}) {
+}: VersionTaskOptions) {
   const executor = workspaceExecutor(provider);
   return drafts.runVersionTransaction(
     id,
@@ -58,9 +87,19 @@ export async function generateDrafts({
   variants = 1,
   designMd = null,
   onProgress,
-}) {
+}: {
+  drafts: DraftStore;
+  provider?: WorkspaceProvider;
+  prompt: string;
+  variants?: string | number;
+  designMd?: string | null;
+  onProgress?: ProgressHandler;
+}): Promise<{ drafts: DraftResult[] }> {
   if (!prompt?.trim()) throw new Error('prompt required');
-  const count = Math.min(Math.max(Number.parseInt(variants, 10) || 1, 1), MAX_VARIANTS);
+  const count = Math.min(
+    Math.max(Number.parseInt(String(variants), 10) || 1, 1),
+    MAX_VARIANTS,
+  );
   const settled = await Promise.allSettled(
     Array.from({ length: count }, async (_, index) => {
       const variant = index + 1;
@@ -106,11 +145,28 @@ export async function generateDrafts({
   const results = settled
     .filter((item) => item.status === 'fulfilled')
     .map((item) => item.value);
-  if (!results.length) throw settled[0].reason;
+  if (!results.length) {
+    const failure = settled.find(
+      (item): item is PromiseRejectedResult => item.status === 'rejected',
+    );
+    throw failure?.reason ?? new Error('draft generation failed');
+  }
   return { drafts: results };
 }
 
-export async function iterateDraft({ drafts, provider, id, instruction, onProgress }) {
+export async function iterateDraft({
+  drafts,
+  provider,
+  id,
+  instruction,
+  onProgress,
+}: {
+  drafts: DraftStore;
+  provider?: WorkspaceProvider;
+  id: string;
+  instruction: string;
+  onProgress?: ProgressHandler;
+}): Promise<DraftResult> {
   if (!instruction?.trim()) throw new Error('instruction required');
   onProgress?.({ type: 'pipeline', stage: 'context_loaded' });
   const result = await executeVersionTask({
@@ -133,7 +189,20 @@ export async function editDraftSource({
   locator,
   instruction,
   onProgress,
-}) {
+}: {
+  drafts: DraftStore;
+  provider?: WorkspaceProvider;
+  id: string;
+  locator: SourceLocator;
+  instruction: string;
+  onProgress?: ProgressHandler;
+}): Promise<DraftResult & {
+  locator: {
+    file: string;
+    line: number;
+    component: string | null;
+  };
+}> {
   if (!instruction?.trim()) throw new Error('instruction required');
   const sourceContext = await sourceContextForLocator({ drafts, id, locator });
   onProgress?.({
@@ -175,7 +244,14 @@ export async function editDraftByImage({
   image,
   instruction,
   onProgress,
-}) {
+}: {
+  drafts: DraftStore;
+  provider?: WorkspaceProvider;
+  id: string;
+  image: string;
+  instruction: string;
+  onProgress?: ProgressHandler;
+}): Promise<DraftResult> {
   if (!instruction?.trim()) throw new Error('instruction required');
   if (!image) throw new Error('image required');
   onProgress?.({ type: 'pipeline', stage: 'image_prepared' });

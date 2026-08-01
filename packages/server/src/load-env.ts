@@ -9,7 +9,7 @@ const DEFAULT_ENV_PATH = path.resolve(__dirname, '../../../.env');
  * Load a `.env` file into process.env.
  * Missing files are ignored so the default/mock behavior still works on fresh clones.
  */
-export function loadEnv(envPath = DEFAULT_ENV_PATH) {
+export function loadEnv(envPath: string = DEFAULT_ENV_PATH): void {
   if (!fs.existsSync(envPath)) return;
   const content = fs.readFileSync(envPath, 'utf8');
   for (const raw of content.split(/\r?\n/)) {
