@@ -10,12 +10,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "npm run build --workspace @draftly/editor && node packages/server/src/dev.js",
-    "start": "npm run build --workspace @draftly/editor && node packages/server/src/dev.js",
+    "dev": "npm run build --workspace @draftly/editor && npm run dev --workspace @draftly/server",
+    "start": "npm run build --workspace @draftly/editor && npm run build --workspace @draftly/server && npm run start --workspace @draftly/server",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "migrate:drafts": "node packages/server/src/migrate-drafts.js",
-    "smoke": "node scripts/smoke-draft.mjs",
+    "migrate:drafts": "tsx packages/server/src/migrate-drafts.ts",
+    "smoke": "tsx scripts/smoke-draft.ts",
     "check": "npm run build && npm test && npm run smoke"
   }
 }

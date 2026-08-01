@@ -3,6 +3,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCommand } from './process.js';
+import type {
+  CommandRunner,
+  DraftMeta,
+  DraftVersion,
+  ErrorWithStatus,
+  ProgressHandler,
+} from './types.js';
+import { errorWithStatus } from './types.js';
 
 const DEFAULT_TEMPLATE_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -12,26 +20,28 @@ const DRAFT_ID = /^[a-z0-9][a-z0-9-]*$/;
 const TEMPLATE_VERSION = 1;
 
 export class DraftNotFoundError extends Error {
-  constructor(id) {
+  status = 404;
+
+  constructor(id: unknown) {
     super(`draft not found: ${id}`);
-    this.status = 404;
   }
 }
 
 export class InvalidDraftPathError extends Error {
-  constructor(file) {
+  status = 400;
+
+  constructor(file: unknown) {
     super(`invalid draft path: ${file}`);
-    this.status = 400;
   }
 }
 
-async function writeJsonAtomic(file, value) {
+async function writeJsonAtomic(file: string, value: unknown): Promise<void> {
   const temporary = `${file}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`);
   await fs.rename(temporary, file);
 }
 
-async function copyTemplate(source, destination) {
+async function copyTemplate(source: string, destination: string): Promise<void> {
   await fs.cp(source, destination, {
     recursive: true,
     filter(file) {
@@ -45,11 +55,21 @@ async function copyTemplate(source, destination) {
 }
 
 export class DraftStore {
+  rootDir: string;
+  templateDir: string;
+  run: CommandRunner;
+  installDependencies: boolean;
+
   constructor({
     rootDir,
     templateDir = DEFAULT_TEMPLATE_DIR,
     commandRunner = runCommand,
     installDependencies = true,
+  }: {
+    rootDir: string;
+    templateDir?: string;
+    commandRunner?: CommandRunner;
+    installDependencies?: boolean;
   }) {
     this.rootDir = path.resolve(rootDir);
     this.templateDir = path.resolve(templateDir);
@@ -57,36 +77,37 @@ export class DraftStore {
     this.installDependencies = installDependencies;
   }
 
-  _assertId(id) {
+  _assertId(id: unknown): string {
     if (!DRAFT_ID.test(String(id))) throw new DraftNotFoundError(id);
     return String(id);
   }
 
-  _dir(id) {
+  _dir(id: unknown): string {
     return path.join(this.rootDir, this._assertId(id));
   }
 
-  _metaPath(id) {
+  _metaPath(id: unknown): string {
     return path.join(this._dir(id), 'meta.json');
   }
 
-  projectDir(id) {
+  projectDir(id: unknown): string {
     return path.join(this._dir(id), 'project');
   }
 
-  async list() {
-    let names;
+  async list(): Promise<DraftMeta[]> {
+    let names: string[];
     try {
       names = await fs.readdir(this.rootDir);
-    } catch (error) {
-      if (error.code === 'ENOENT') return [];
-      throw error;
+    } catch (error: unknown) {
+      const knownError = errorWithStatus(error);
+      if (knownError.code === 'ENOENT') return [];
+      throw knownError;
     }
     const drafts = [];
     for (const name of names) {
       if (!DRAFT_ID.test(name)) continue;
       try {
-        const meta = JSON.parse(await fs.readFile(this._metaPath(name), 'utf8'));
+        const meta = JSON.parse(await fs.readFile(this._metaPath(name), 'utf8')) as DraftMeta;
         drafts.push(meta.format ? meta : { ...meta, format: 'html-legacy' });
       } catch {
         // Ignore unrelated and incomplete directories.
@@ -95,11 +116,19 @@ export class DraftStore {
     return drafts.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   }
 
-  async createProject({ prompt, designMd = null, onProgress } = {}) {
+  async createProject({
+    prompt,
+    designMd = null,
+    onProgress,
+  }: {
+    prompt?: string;
+    designMd?: string | null;
+    onProgress?: ProgressHandler;
+  } = {}): Promise<DraftMeta> {
     const id = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
     const draftDir = this._dir(id);
     const projectDir = this.projectDir(id);
-    const meta = {
+    const meta: DraftMeta = {
       id,
       title: String(prompt || '未命名草稿').replace(/\s+/g, ' ').trim().slice(0, 40) || '未命名草稿',
       prompt: String(prompt || ''),
@@ -136,48 +165,60 @@ export class DraftStore {
       await this.run('git', ['add', '-A'], { cwd: projectDir });
       await this.run('git', ['commit', '--quiet', '-m', 'chore: initialize Draftly project'], { cwd: projectDir });
       return meta;
-    } catch (error) {
+    } catch (error: unknown) {
       await fs.rm(draftDir, { recursive: true, force: true });
       throw error;
     }
   }
 
-  async remove(id) {
+  async remove(id: unknown): Promise<void> {
     await fs.rm(this._dir(id), { recursive: true, force: true });
   }
 
-  async meta(id) {
+  async meta(id: unknown): Promise<DraftMeta> {
     try {
-      const meta = JSON.parse(await fs.readFile(this._metaPath(id), 'utf8'));
+      const meta = JSON.parse(await fs.readFile(this._metaPath(id), 'utf8')) as DraftMeta;
       if (meta.format !== 'vite-react') {
-        const error = new Error(`legacy HTML draft requires migration: ${id}`);
+        const error = new Error(`legacy HTML draft requires migration: ${id}`) as ErrorWithStatus;
         error.status = 409;
         throw error;
       }
       return meta;
-    } catch (error) {
-      if (error.status) throw error;
+    } catch (error: unknown) {
+      const knownError = errorWithStatus(error);
+      if (knownError.status) throw knownError;
       throw new DraftNotFoundError(id);
     }
   }
 
-  async head(id) {
+  async head(id: unknown): Promise<string> {
     const { stdout } = await this.run('git', ['rev-parse', 'HEAD'], { cwd: this.projectDir(id) });
     return stdout.trim();
   }
 
-  async assertClean(id) {
+  async assertClean(id: unknown): Promise<void> {
     const { stdout } = await this.run('git', ['status', '--porcelain'], { cwd: this.projectDir(id) });
     if (stdout.trim()) throw new Error(`draft workspace has uncommitted changes: ${id}`);
   }
 
-  async resetTo(id, commit) {
+  async resetTo(id: unknown, commit: string): Promise<void> {
     const cwd = this.projectDir(id);
     await this.run('git', ['reset', '--hard', commit], { cwd });
     await this.run('git', ['clean', '-fd'], { cwd });
   }
 
-  async commitVersion(id, { kind, instruction = null, summary = null } = {}) {
+  async commitVersion(
+    id: unknown,
+    {
+      kind,
+      instruction = null,
+      summary = null,
+    }: {
+      kind: string;
+      instruction?: string | null;
+      summary?: string | null;
+    },
+  ): Promise<{ meta: DraftMeta; version: number; commit: string }> {
     const meta = await this.meta(id);
     const cwd = this.projectDir(id);
     await this.run('git', ['add', '-A'], { cwd });
@@ -200,7 +241,11 @@ export class DraftStore {
     return { meta, version: v, commit };
   }
 
-  async runVersionTransaction(id, details, execute) {
+  async runVersionTransaction<T extends { summary?: string | null }>(
+    id: unknown,
+    details: { kind: string; instruction?: string | null },
+    execute: (cwd: string) => Promise<T>,
+  ): Promise<{ meta: DraftMeta; version: number; commit: string; outcome: T }> {
     await this.meta(id);
     await this.assertClean(id);
     const before = await this.head(id);
@@ -208,15 +253,18 @@ export class DraftStore {
       const outcome = await execute(this.projectDir(id));
       const committed = await this.commitVersion(id, { ...details, summary: outcome?.summary || null });
       return { ...committed, outcome };
-    } catch (error) {
+    } catch (error: unknown) {
       await this.resetTo(id, before).catch(() => {});
       throw error;
     }
   }
 
-  async rollbackVersion(id, value) {
+  async rollbackVersion(
+    id: unknown,
+    value: string | number,
+  ): Promise<{ meta: DraftMeta; version: number; commit: string; outcome: { summary: string } }> {
     const meta = await this.meta(id);
-    const target = Number.parseInt(value, 10);
+    const target = Number.parseInt(String(value), 10);
     const selected = meta.versions.find((version) => version.v === target);
     if (!selected) throw new DraftNotFoundError(`${id} v${target}`);
     const { stdout: trees } = await this.run(
@@ -226,7 +274,7 @@ export class DraftStore {
     );
     const [currentTree, targetTree] = trees.trim().split('\n');
     if (currentTree === targetTree) {
-      const error = new Error(`draft source already matches v${target}`);
+      const error = new Error(`draft source already matches v${target}`) as ErrorWithStatus;
       error.status = 409;
       throw error;
     }
@@ -240,7 +288,7 @@ export class DraftStore {
     );
   }
 
-  resolveProjectFile(id, relativeFile) {
+  resolveProjectFile(id: unknown, relativeFile: string): string {
     if (!relativeFile || path.isAbsolute(relativeFile)) throw new InvalidDraftPathError(relativeFile);
     const project = this.projectDir(id);
     const resolved = path.resolve(project, relativeFile);
@@ -250,7 +298,16 @@ export class DraftStore {
     return resolved;
   }
 
-  async readSource(id, relativeFile = 'src/App.tsx', version = null) {
+  async readSource(
+    id: unknown,
+    relativeFile = 'src/App.tsx',
+    version: number | null = null,
+  ): Promise<{
+    meta: DraftMeta;
+    file: string;
+    source: string;
+    version: number;
+  }> {
     const meta = await this.meta(id);
     const normalized = String(relativeFile).replaceAll('\\', '/');
     const absolute = this.resolveProjectFile(id, normalized);
@@ -276,7 +333,10 @@ export class DraftStore {
     return { meta, file: normalized, source, version: version ?? meta.versions.length };
   }
 
-  async versionDiff(id, value) {
+  async versionDiff(
+    id: unknown,
+    value: string | number,
+  ): Promise<{ version: DraftVersion; diff: string }> {
     const meta = await this.meta(id);
     const selected = meta.versions.find((item) => item.v === Number(value));
     if (!selected) throw new DraftNotFoundError(`${id} v${value}`);

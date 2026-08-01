@@ -10,12 +10,21 @@ import {
   generateDrafts,
   iterateDraft,
 } from '../src/draft-generate.js';
-import { createApiServer } from '../src/http.js';
+import { createApiApp } from '../src/http.js';
 import { migrateLegacyDrafts } from '../src/migration.js';
 import { runCommand } from '../src/process.js';
 import { sourceContextForLocator } from '../src/source-locator.js';
+import type {
+  CommandOptions,
+  CommandResult,
+  PiTaskOptions,
+  PreviewManagerLike,
+  ProgressEvent,
+  SourceLocator,
+  WorkspaceProvider,
+} from '../src/types.js';
 
-let temporaryRoot;
+let temporaryRoot: string;
 
 before(async () => {
   temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-source-tests-'));
@@ -25,17 +34,24 @@ after(async () => {
   await fs.rm(temporaryRoot, { recursive: true, force: true });
 });
 
-async function testCommand(command, args, options) {
+async function testCommand(
+  command: string,
+  args: string[],
+  options?: CommandOptions,
+): Promise<CommandResult> {
   if (command === 'npm') return { stdout: '', stderr: '' };
   return runCommand(command, args, options);
 }
 
-class FakeWorkspaceExecutor {
-  constructor() {
-    this.calls = [];
-  }
+class FakeWorkspaceExecutor implements WorkspaceProvider {
+  calls: PiTaskOptions[] = [];
 
-  async runTask({ cwd, instruction, images = [], onEvent }) {
+  async runTask({
+    cwd,
+    instruction,
+    images = [],
+    onEvent,
+  }: PiTaskOptions): Promise<string> {
     this.calls.push({ cwd, instruction, images });
     onEvent?.({ type: 'agent_start' });
     onEvent?.({ type: 'tool_execution_start', toolName: 'read', toolCallId: 'read-1' });
@@ -51,7 +67,7 @@ class FakeWorkspaceExecutor {
   }
 }
 
-function createStore(name) {
+function createStore(name: string): DraftStore {
   return new DraftStore({
     rootDir: path.join(temporaryRoot, name),
     installDependencies: false,
@@ -59,7 +75,7 @@ function createStore(name) {
   });
 }
 
-function locatorFor(source, token = '<h1') {
+function locatorFor(source: string, token = '<h1'): SourceLocator {
   const index = source.indexOf(token);
   assert.notEqual(index, -1);
   const before = source.slice(0, index);
@@ -67,7 +83,7 @@ function locatorFor(source, token = '<h1') {
   return {
     file: 'src/App.tsx',
     line: lines.length,
-    column: lines.at(-1).length,
+    column: lines.at(-1)!.length,
     tagName: token.slice(1),
     text: 'selected heading',
     styles: { display: 'block' },
@@ -134,7 +150,7 @@ test('source locator resolves selected JSX, imports, and owning component', asyn
 test('source generation, iteration, locator edit, and image edit create Git versions', async () => {
   const store = createStore('pipeline');
   const executor = new FakeWorkspaceExecutor();
-  const events = [];
+  const events: ProgressEvent[] = [];
   const generated = await generateDrafts({
     drafts: store,
     provider: executor,
@@ -143,8 +159,12 @@ test('source generation, iteration, locator edit, and image edit create Git vers
     onProgress: (event) => events.push(event),
   });
   assert.equal(generated.drafts.length, 2);
-  assert.ok(events.some((event) => event.stage === 'scaffold_started'));
-  assert.ok(events.some((event) => event.stage === 'validation_completed'));
+  assert.ok(events.some(
+    (event) => event.type === 'pipeline' && event.stage === 'scaffold_started',
+  ));
+  assert.ok(events.some(
+    (event) => event.type === 'pipeline' && event.stage === 'validation_completed',
+  ));
   assert.ok(events.some((event) => event.type === 'pi' && event.event.toolName === 'edit'));
 
   const id = generated.drafts[0].id;
@@ -176,7 +196,7 @@ test('source generation, iteration, locator edit, and image edit create Git vers
     instruction: '参考截图调整布局',
   });
   assert.equal(image.version, 4);
-  assert.equal(executor.calls.at(-1).images.length, 1);
+  assert.equal(executor.calls.at(-1)?.images?.length, 1);
 });
 
 test('failed generation removes the incomplete project instead of creating mock output', async () => {
@@ -204,57 +224,74 @@ test('HTTP source API streams progress, serves preview metadata, exports ZIP, an
       return { url: 'http://127.0.0.1:59999/', token: 'preview-token', status: 'ready' };
     },
     async shutdown() {},
-  };
-  const server = createApiServer({
+  } satisfies PreviewManagerLike;
+  const { app } = createApiApp({
     provider: executor,
     drafts: store,
     editorDir,
     previewManager,
   });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const post = (url, body) => fetch(`${base}${url}`, {
+  const post = (url: string, body: unknown) => app.request(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  try {
+  {
     const response = await post('/api/drafts/generate?stream=1', {
       prompt: '生成仪表盘',
       variants: 1,
     });
-    assert.match(response.headers.get('content-type'), /application\/x-ndjson/);
-    const messages = (await response.text()).trim().split('\n').map(JSON.parse);
+    assert.match(response.headers.get('content-type') ?? '', /application\/x-ndjson/);
+    const messages = (await response.text()).trim().split('\n').map(
+      (line) => JSON.parse(line) as {
+        type: string;
+        data?: { drafts: Array<{ id: string }> };
+      },
+    );
     assert.ok(messages.some((message) => message.type === 'progress'));
-    const id = messages.find((message) => message.type === 'result').data.drafts[0].id;
+    const resultMessage = messages.find((message) => message.type === 'result');
+    assert.ok(resultMessage?.data);
+    const id = resultMessage.data.drafts[0].id;
 
-    const detail = await fetch(`${base}/api/drafts/${id}`).then((item) => item.json());
+    const detailResponse = await app.request(`/api/drafts/${id}`);
+    const detail = await detailResponse.json() as {
+      version: number;
+      source: { file: string };
+    };
     assert.equal(detail.version, 1);
     assert.equal(detail.source.file, 'src/App.tsx');
-    const preview = await post(`/api/drafts/${id}/preview`, {}).then((item) => item.json());
+    const previewResponse = await post(`/api/drafts/${id}/preview`, {});
+    const preview = await previewResponse.json() as { token: string };
     assert.equal(preview.token, 'preview-token');
 
-    const source = await fetch(`${base}/api/drafts/${id}/source?file=src%2FApp.tsx`).then((item) => item.json());
+    const sourceResponse = await app.request(
+      `/api/drafts/${id}/source?file=src%2FApp.tsx`,
+    );
+    const source = await sourceResponse.json() as { source: string };
     const locator = locatorFor(source.source);
-    const edited = await post(`/api/drafts/${id}/edit-source`, {
+    const editedResponse = await post(`/api/drafts/${id}/edit-source`, {
       locator,
       instruction: '修改标题',
-    }).then((item) => item.json());
+    });
+    const edited = await editedResponse.json() as { version: number };
     assert.equal(edited.version, 2);
 
-    const rolledBack = await post(`/api/drafts/${id}/rollback`, { v: 1 }).then((item) => item.json());
+    const rollbackResponse = await post(`/api/drafts/${id}/rollback`, { v: 1 });
+    const rolledBack = await rollbackResponse.json() as { version: number };
     assert.equal(rolledBack.version, 3);
-    const diff = await fetch(`${base}/api/drafts/${id}/versions/3/diff`).then((item) => item.json());
+    const diffResponse = await app.request(`/api/drafts/${id}/versions/3/diff`);
+    const diff = await diffResponse.json() as { version: { kind: string } };
     assert.equal(diff.version.kind, 'rollback');
 
-    const exported = await fetch(`${base}/api/drafts/${id}/export`);
+    const exported = await app.request(`/api/drafts/${id}/export`);
     assert.equal(exported.status, 200);
-    assert.match(exported.headers.get('content-type'), /application\/zip/);
-    assert.match(exported.headers.get('content-disposition'), new RegExp(`${id}-v3\\.zip`));
+    assert.match(exported.headers.get('content-type') ?? '', /application\/zip/);
+    assert.match(
+      exported.headers.get('content-disposition') ?? '',
+      new RegExp(`${id}-v3\\.zip`),
+    );
     const bytes = new Uint8Array(await exported.arrayBuffer());
     assert.deepEqual([...bytes.slice(0, 2)], [0x50, 0x4b]);
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
   }
 });
 

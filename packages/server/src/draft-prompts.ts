@@ -9,7 +9,15 @@ Run npm run build before finishing. Fix every error you introduce.
 Your final response must briefly summarize the files changed.
 `.trim();
 
-export function buildGenerateInstruction({ userPrompt, designMd = null, variant = 1 }) {
+export function buildGenerateInstruction({
+  userPrompt,
+  designMd = null,
+  variant = 1,
+}: {
+  userPrompt: string;
+  designMd?: string | null;
+  variant?: number;
+}): string {
   return [
     STACK_RULES,
     `Create a complete interface for this request:\n${userPrompt}`,
@@ -21,7 +29,7 @@ export function buildGenerateInstruction({ userPrompt, designMd = null, variant 
   ].join('\n\n');
 }
 
-export function buildIterateInstruction({ instruction }) {
+export function buildIterateInstruction({ instruction }: { instruction: string }): string {
   return [
     STACK_RULES,
     'Inspect the current application before editing it.',
@@ -30,7 +38,13 @@ export function buildIterateInstruction({ instruction }) {
   ].join('\n\n');
 }
 
-export function buildSourceEditInstruction({ instruction, context }) {
+export function buildSourceEditInstruction({
+  instruction,
+  context,
+}: {
+  instruction: string;
+  context: string;
+}): string {
   return [
     STACK_RULES,
     'The user selected a rendered element that maps to the following source context:',
@@ -40,7 +54,7 @@ export function buildSourceEditInstruction({ instruction, context }) {
   ].join('\n\n');
 }
 
-export function buildImageEditInstruction({ instruction }) {
+export function buildImageEditInstruction({ instruction }: { instruction: string }): string {
   return [
     STACK_RULES,
     'A reference screenshot is attached to this task.',

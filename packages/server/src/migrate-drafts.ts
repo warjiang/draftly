@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-import path from 'node:path';
 import { loadEnv } from './load-env.js';
 import { migrateLegacyDrafts } from './migration.js';
+import { resolveDraftsDir } from './paths.js';
 import { createPiHarnessProvider } from './pi-harness.js';
 
 loadEnv();
 
-const rootDir = path.resolve(process.env.DRAFTLY_DRAFTS_DIR || '.draftly/drafts');
+const rootDir = resolveDraftsDir();
 const results = await migrateLegacyDrafts({
   rootDir,
   provider: createPiHarnessProvider(),

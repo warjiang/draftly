@@ -3,6 +3,7 @@
 Draftly 是一个本地运行的 AI 源码原型工具。输入页面需求后，Pi 会在独立工作目录中生成
 Vite + React + TypeScript + Tailwind CSS + shadcn/ui 项目。页面通过受控 Vite dev
 server 实时预览，并支持整页迭代、源码级点选修改、截图修改、Git 版本回退和源码 ZIP 导出。
+本地 API 使用 Hono + TypeScript，并通过 Hono Node.js adapter 运行。
 
 生产链路只使用本机已认证的 Pi CLI，不包含 Mock 页面或 HTML 字符串回退。
 
@@ -84,7 +85,7 @@ Git 仓库，原 HTML 与旧 meta 保存在草稿内的 `legacy-backup/`。迁�
 
 ```bash
 npm run dev             # 构建编辑器并启动本地服务
-npm run build           # 构建编辑器和源码草稿模板
+npm run build           # 构建服务端、编辑器和源码草稿模板
 npm test                # 运行全部测试
 npm run smoke           # 真实模板/预览/定位/Git/ZIP 冒烟
 npm run migrate:drafts  # 迁移旧 HTML 草稿
@@ -119,10 +120,10 @@ npm run check           # build + test + smoke
 packages/
 ├── draft-template/  生成项目的 Vite/React/TS/Tailwind/shadcn 模板与 inspect bridge
 ├── editor/          Draftly React 编辑器
-├── server/          Pi workspace 执行、Git 存储、预览进程、Locator/API/迁移
+├── server/          Hono/TypeScript API、Pi workspace、Git 存储、预览进程与迁移
 └── shared/          DESIGN.md 解析与校验
 scripts/
-└── smoke-draft.mjs  源码草稿全链路冒烟
+└── smoke-draft.ts   源码草稿全链路冒烟
 ```
 
 ## 安全边界

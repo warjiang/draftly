@@ -13,7 +13,8 @@ const FIX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'fixtures
 const css = await fs.readFile(path.join(FIX, 'linear-ish.css'), 'utf8');
 const html = await fs.readFile(path.join(FIX, 'linear-ish.html'), 'utf8');
 
-const near = (hex, target, tol = 40) => {
+const near = (hex: string | null, target: string, tol = 40): boolean => {
+  if (!hex) return false;
   const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
   const t = [1, 3, 5].map((i) => parseInt(target.slice(i, i + 2), 16));
   return v.every((c, i) => Math.abs(c - t[i]) <= tol);
@@ -25,7 +26,10 @@ test('normalizeColor：hex/rgb/rgba/hsl/命名色归一化', () => {
   assert.equal(normalizeColor('#5e6ad2ff'), '#5e6ad2');
   assert.equal(normalizeColor('rgb(94, 106, 210)'), '#5e6ad2');
   assert.equal(normalizeColor('rgba(94,106,210,0.5)'), '#5e6ad2');
-  assert.ok(near(normalizeColor('hsl(232, 56%, 59%)'), '#5e6ad2', 4), normalizeColor('hsl(232, 56%, 59%)'));
+  assert.ok(
+    near(normalizeColor('hsl(232, 56%, 59%)'), '#5e6ad2', 4),
+    normalizeColor('hsl(232, 56%, 59%)') ?? '',
+  );
   assert.equal(normalizeColor('white'), '#ffffff');
   assert.equal(normalizeColor('transparent'), null);
   assert.equal(normalizeColor('currentColor'), null);
@@ -68,8 +72,14 @@ test('extractDesign(fixture)：designMd 主色≈#5e6ad2，tokens/tailwindCss �
   // designMd 通过规范校验（Task 3.1 validateDesignMd）
   assert.deepEqual(validateDesignMd(designMd), []);
   const { meta } = parseDesignMd(designMd);
-  assert.ok(near(meta.colors.primary, '#5e6ad2'), `primary=${meta.colors.primary}`);
-  assert.ok(near(meta.colors.background, '#0f1011'), `background=${meta.colors.background}`);
+  assert.ok(
+    near(meta.colors?.primary ?? null, '#5e6ad2'),
+    `primary=${meta.colors?.primary}`,
+  );
+  assert.ok(
+    near(meta.colors?.background ?? null, '#0f1011'),
+    `background=${meta.colors?.background}`,
+  );
   // tokens schema 固定
   assert.ok(Array.isArray(tokens.colors) && tokens.colors.length >= 4);
   for (const c of tokens.colors) {
@@ -79,6 +89,7 @@ test('extractDesign(fixture)：designMd 主色≈#5e6ad2，tokens/tailwindCss �
   }
   assert.equal(tokens.colors.filter((c) => c.role === 'primary').length, 1);
   const primaryToken = tokens.colors.find((c) => c.role === 'primary');
+  assert.ok(primaryToken);
   assert.ok(near(primaryToken.hex, '#5e6ad2'), `primary cluster=${primaryToken.hex}`);
   assert.ok(['4px', '8px'].includes(tokens.spacing.unit));
   // tailwindCss：:root 变量 + @theme 注释

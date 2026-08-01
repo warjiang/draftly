@@ -1,0 +1,336 @@
+import path from 'node:path';
+import { Readable } from 'node:stream';
+import { fileURLToPath } from 'node:url';
+import { serveStatic } from '@hono/node-server/serve-static';
+import archiver from 'archiver';
+import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { stream } from 'hono/streaming';
+import {
+  editDraftByImage,
+  editDraftSource,
+  generateDrafts,
+  iterateDraft,
+} from './draft-generate.js';
+import type { DraftStore } from './drafts.js';
+import { extractDesign, fetchSiteAssets } from './extract.js';
+import { PreviewManager } from './preview-manager.js';
+import { assertNoEscapingSymlinks } from './source-locator.js';
+import { getTemplate, loadTemplates, templateSummary } from './templates.js';
+import type {
+  ErrorWithStatus,
+  PreviewManagerLike,
+  ProgressHandler,
+  SourceLocator,
+  WorkspaceProvider,
+} from './types.js';
+import { errorWithStatus } from './types.js';
+
+const EDITOR_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../editor/dist');
+const MAX_BODY_SIZE = 10_000_000;
+
+type JsonObject = Record<string, unknown>;
+
+type Operation<T> = (onProgress?: ProgressHandler) => Promise<T>;
+
+export type ApiAppOptions = {
+  provider?: WorkspaceProvider;
+  editorDir?: string;
+  drafts: DraftStore;
+  previewManager?: PreviewManagerLike;
+};
+
+export type ApiAppBundle = {
+  app: Hono;
+  previewManager: PreviewManagerLike;
+};
+
+export function createApiApp({
+  provider,
+  editorDir = EDITOR_DIR,
+  drafts,
+  previewManager,
+}: ApiAppOptions): ApiAppBundle {
+  if (!drafts) throw new Error('createApiApp: drafts store required');
+
+  const previews = previewManager ?? new PreviewManager({ drafts });
+  const app = new Hono();
+
+  app.use('/api/*', bodyLimit({
+    maxSize: MAX_BODY_SIZE,
+    onError: (c) => json(c, { error: 'body too large' }, 413),
+  }));
+
+  app.post('/api/drafts/generate', async (c) => {
+    const input = await readJson<{
+      prompt?: string;
+      style?: string;
+      variants?: string | number;
+    }>(c);
+    if (!input.prompt?.trim()) return json(c, { error: 'prompt required' }, 400);
+
+    let designMd: string | null = null;
+    if (input.style) {
+      const template = await getTemplate(String(input.style));
+      if (!template) return json(c, { error: `unknown style: ${input.style}` }, 400);
+      designMd = template.designMd;
+    }
+
+    const execute: Operation<Awaited<ReturnType<typeof generateDrafts>>> = (onProgress) =>
+      generateDrafts({
+        drafts,
+        provider,
+        prompt: input.prompt!,
+        variants: input.variants,
+        designMd,
+        onProgress,
+      });
+    return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
+  });
+
+  app.get('/api/drafts', async (c) => json(c, { drafts: await drafts.list() }));
+
+  app.get('/api/drafts/:id', async (c) => {
+    const id = c.req.param('id');
+    const meta = await drafts.meta(id);
+    let source: Awaited<ReturnType<DraftStore['readSource']>> | null = null;
+    const file = c.req.query('file');
+    try {
+      source = await drafts.readSource(id, file ?? 'src/App.tsx');
+    } catch (error: unknown) {
+      if (file !== undefined) throw error;
+    }
+    return json(c, {
+      meta,
+      version: meta.versions.length,
+      source: source ? { file: source.file, content: source.source } : null,
+    });
+  });
+
+  app.get('/api/drafts/:id/source', async (c) => {
+    const version = c.req.query('v');
+    return json(c, await drafts.readSource(
+      c.req.param('id'),
+      c.req.query('file') ?? 'src/App.tsx',
+      version ? Number(version) : null,
+    ));
+  });
+
+  app.post('/api/drafts/:id/preview', async (c) =>
+    json(c, await previews.ensure(c.req.param('id'))));
+
+  app.post('/api/drafts/:id/iterate', async (c) => {
+    const input = await readJson<{ instruction?: string }>(c);
+    if (!input.instruction?.trim()) return json(c, { error: 'instruction required' }, 400);
+    const execute: Operation<Awaited<ReturnType<typeof iterateDraft>>> = (onProgress) =>
+      iterateDraft({
+        drafts,
+        provider,
+        id: c.req.param('id'),
+        instruction: input.instruction!,
+        onProgress,
+      });
+    return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
+  });
+
+  app.post('/api/drafts/:id/edit-source', async (c) => {
+    const input = await readJson<{
+      instruction?: string;
+      locator?: SourceLocator;
+    }>(c);
+    if (!input.instruction?.trim()) return json(c, { error: 'instruction required' }, 400);
+    if (!input.locator) return json(c, { error: 'locator required' }, 400);
+    const execute: Operation<Awaited<ReturnType<typeof editDraftSource>>> = (onProgress) =>
+      editDraftSource({
+        drafts,
+        provider,
+        id: c.req.param('id'),
+        locator: input.locator!,
+        instruction: input.instruction!,
+        onProgress,
+      });
+    return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
+  });
+
+  app.post('/api/drafts/:id/edit-by-image', async (c) => {
+    const input = await readJson<{ image?: string; instruction?: string }>(c);
+    if (!input.image) return json(c, { error: 'image required' }, 400);
+    if (!input.instruction?.trim()) return json(c, { error: 'instruction required' }, 400);
+    const execute: Operation<Awaited<ReturnType<typeof editDraftByImage>>> = (onProgress) =>
+      editDraftByImage({
+        drafts,
+        provider,
+        id: c.req.param('id'),
+        image: input.image!,
+        instruction: input.instruction!,
+        onProgress,
+      });
+    return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
+  });
+
+  app.post('/api/drafts/:id/rollback', async (c) => {
+    const input = await readJson<{ v?: string | number | null }>(c);
+    if (input.v === undefined || input.v === null) {
+      return json(c, { error: 'v required' }, 400);
+    }
+    const execute: Operation<{
+      id: string;
+      title: string;
+      version: number;
+    }> = async (onProgress) => {
+      onProgress?.({ type: 'pipeline', stage: 'rollback_started', target: Number(input.v) });
+      const result = await drafts.rollbackVersion(c.req.param('id'), input.v!);
+      onProgress?.({ type: 'pipeline', stage: 'version_saved', version: result.version });
+      return {
+        id: result.meta.id,
+        title: result.meta.title,
+        version: result.version,
+      };
+    };
+    return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute);
+  });
+
+  app.get('/api/drafts/:id/versions/:version/diff', async (c) =>
+    json(c, await drafts.versionDiff(c.req.param('id'), Number(c.req.param('version')))));
+
+  app.get('/api/drafts/:id/export', (c) => exportSource(c, drafts, c.req.param('id')));
+
+  app.get('/api/templates', async (c) =>
+    json(c, { templates: (await loadTemplates()).map(templateSummary) }));
+
+  app.get('/api/templates/:id', async (c) => {
+    const id = c.req.param('id');
+    const template = await getTemplate(id);
+    if (!template) return json(c, { error: `unknown template: ${id}` }, 404);
+    return json(c, template);
+  });
+
+  app.post('/api/extract', async (c) => {
+    const input = await readJson<{
+      url?: string;
+      html?: string;
+      css?: string | string[];
+    }>(c);
+    if (input.url) return json(c, extractDesign(await fetchSiteAssets(input.url)));
+    const cssTexts = Array.isArray(input.css) ? input.css : input.css ? [input.css] : [];
+    if (!input.html && !cssTexts.length) {
+      return json(c, { error: 'required: { html, css } or { url }' }, 400);
+    }
+    return json(c, extractDesign({ html: input.html ?? '', cssTexts }));
+  });
+
+  app.all('/api/*', (c) =>
+    json(c, { error: `unknown endpoint: ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));
+
+  app.get('*', serveStatic({
+    root: editorDir,
+    rewriteRequestPath: (requestPath) => requestPath === '/' ? '/index.html' : requestPath,
+  }));
+
+  app.notFound((c) => c.text('not found', 404));
+  app.onError((error, c) => {
+    const knownError = errorWithStatus(error);
+    return json(c, { error: knownError.message }, knownError.status ?? 500);
+  });
+
+  return { app, previewManager: previews };
+}
+
+async function readJson<T extends JsonObject>(c: Context): Promise<T> {
+  const body = await c.req.text();
+  if (!body) return {} as T;
+  try {
+    const value: unknown = JSON.parse(body);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('invalid JSON body');
+    }
+    return value as T;
+  } catch {
+    const error = new Error('invalid JSON body') as ErrorWithStatus;
+    error.status = 400;
+    throw error;
+  }
+}
+
+function isStreaming(c: Context): boolean {
+  return c.req.query('stream') === '1';
+}
+
+function json(c: Context, value: unknown, status = 200): Response {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+async function sendOperation<T>(
+  c: Context,
+  execute: Operation<T>,
+  errorStatus = 500,
+): Promise<Response> {
+  try {
+    return json(c, await execute());
+  } catch (error: unknown) {
+    const knownError = errorWithStatus(error);
+    return json(c, { error: knownError.message }, knownError.status ?? errorStatus);
+  }
+}
+
+function streamResult<T>(c: Context, execute: Operation<T>): Response {
+  c.header('Content-Type', 'application/x-ndjson; charset=utf-8');
+  c.header('Cache-Control', 'no-store');
+  c.header('X-Content-Type-Options', 'nosniff');
+  return stream(c, async (output) => {
+    const send = (payload: unknown) => output.write(`${JSON.stringify(payload)}\n`);
+    try {
+      const result = await execute((event) => {
+        void send({ type: 'progress', event });
+      });
+      await send({ type: 'result', data: result });
+    } catch (error: unknown) {
+      const knownError = errorWithStatus(error);
+      await send({
+        type: 'error',
+        error: knownError.message,
+        status: knownError.status ?? 500,
+      });
+    }
+  });
+}
+
+async function exportSource(c: Context, drafts: DraftStore, id: string): Promise<Response> {
+  const meta = await drafts.meta(id);
+  const version = meta.versions.length;
+  const projectDir = drafts.projectDir(id);
+  await assertNoEscapingSymlinks(projectDir);
+  c.header('Content-Type', 'application/zip');
+  c.header('Content-Disposition', `attachment; filename="draftly-${meta.id}-v${version}.zip"`);
+  c.header('Cache-Control', 'no-store');
+
+  return stream(c, async (output) => {
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.glob('**/*', {
+      cwd: projectDir,
+      dot: true,
+      ignore: [
+        '.git',
+        '.git/**',
+        'node_modules',
+        'node_modules/**',
+        'dist',
+        'dist/**',
+        '.draftly-input',
+        '.draftly-input/**',
+        '**/*.tsbuildinfo',
+      ],
+    });
+    const piping = output.pipe(
+      Readable.toWeb(archive) as ReadableStream<Uint8Array<ArrayBuffer>>,
+    );
+    await archive.finalize();
+    await piping;
+  });
+}

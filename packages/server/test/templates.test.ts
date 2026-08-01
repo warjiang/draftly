@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseDesignMd } from '../../shared/src/design-md.js';
 import { DraftStore } from '../src/drafts.js';
-import { createApiServer } from '../src/http.js';
+import { createApiApp } from '../src/http.js';
 import { loadTemplates, validateTemplate, templateSummary } from '../src/templates.js';
 
 test('模板库加载 10 个且全部通过 schema 校验', async () => {
@@ -19,7 +19,7 @@ test('模板库加载 10 个且全部通过 schema 校验', async () => {
     assert.deepEqual(validateTemplate(t), []);
     assert.equal(t.confidence, 'curated'); // 人工策展标注
     const { meta } = parseDesignMd(t.designMd);
-    assert.match(meta.colors.primary, /^#[0-9a-f]{6}$/);
+    assert.match(meta.colors?.primary ?? '', /^#[0-9a-f]{6}$/);
   }
 });
 
@@ -34,6 +34,7 @@ test('validateTemplate 反例', () => {
 
 test('templateSummary 含色板预览数据', async () => {
   const stripe = (await loadTemplates()).find((t) => t.id === 'stripe');
+  assert.ok(stripe);
   const s = templateSummary(stripe);
   assert.equal(s.colors.primary, '#635bff');
   assert.ok(!('designMd' in s)); // 列表不带全文
@@ -42,38 +43,52 @@ test('templateSummary 含色板预览数据', async () => {
 
 /* ---------- HTTP 集成：模板列表 + 详情（M4 风格预设数据源） ---------- */
 
-let tmp, server, base;
+let tmp: string;
+let app: ReturnType<typeof createApiApp>['app'];
 before(async () => {
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-tpl-'));
   const drafts = new DraftStore({ rootDir: path.join(tmp, 'drafts') });
-  server = createApiServer({
+  ({ app } = createApiApp({
     provider: { runTask: async () => 'unused' },
     drafts,
-    previewManager: { ensure: async () => ({}), shutdown: async () => {} },
-  });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  base = `http://127.0.0.1:${server.address().port}`;
+    previewManager: {
+      ensure: async () => ({ url: 'http://127.0.0.1/', token: 'test', status: 'ready' }),
+      shutdown: async () => {},
+    },
+  }));
 });
 after(async () => {
-  server.closeAllConnections?.();
-  await new Promise((r) => server.close(r));
   await fs.rm(tmp, { recursive: true, force: true });
 });
-const api = async (p, method, body) => {
-  const res = await fetch(base + p, method ? {
+type ApiData = {
+  templates?: Array<{ id: string; colors: Record<string, string> }>;
+  designMd?: string;
+};
+const api = async (
+  requestPath: string,
+  method?: string,
+  body?: unknown,
+): Promise<{ status: number; data: ApiData | null }> => {
+  const res = await app.request(requestPath, method ? {
     method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}),
   } : undefined);
-  return { status: res.status, data: await res.json().catch(() => null) };
+  return {
+    status: res.status,
+    data: await res.json().catch(() => null) as ApiData | null,
+  };
 };
 
 test('GET /api/templates 列表 + GET /api/templates/:id 详情', async () => {
   const list = await api('/api/templates');
   assert.equal(list.status, 200);
-  assert.equal(list.data.templates.length, 10);
-  assert.equal(list.data.templates.find((t) => t.id === 'linear').colors.primary, '#5e6ad2');
+  assert.equal(list.data?.templates?.length, 10);
+  assert.equal(
+    list.data?.templates?.find((template) => template.id === 'linear')?.colors.primary,
+    '#5e6ad2',
+  );
   const detail = await api('/api/templates/stripe');
   assert.equal(detail.status, 200);
-  assert.match(detail.data.designMd, /#635bff/);
+  assert.match(detail.data?.designMd ?? '', /#635bff/);
   const missing = await api('/api/templates/nope');
   assert.equal(missing.status, 404);
 });

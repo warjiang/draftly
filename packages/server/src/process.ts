@@ -1,12 +1,14 @@
 import { spawn } from 'node:child_process';
+import type { CommandOptions, CommandResult } from './types.js';
+import { errorWithStatus } from './types.js';
 
-export function runCommand(command, args, {
+export function runCommand(command: string, args: string[], {
   cwd,
   env = process.env,
   input = null,
   onStdout,
   onStderr,
-} = {}) {
+}: CommandOptions = {}): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
@@ -30,10 +32,10 @@ export function runCommand(command, args, {
     child.on('close', (code, signal) => {
       if (code !== 0) {
         const detail = (stderr || stdout).trim();
-        const error = new Error(
+        const error = errorWithStatus(new Error(
           `${command} ${args.join(' ')} failed (${signal || code})${detail ? `:\n${detail}` : ''}`,
-        );
-        error.code = code;
+        ));
+        error.code = code ?? signal ?? undefined;
         error.stdout = stdout;
         error.stderr = stderr;
         reject(error);
