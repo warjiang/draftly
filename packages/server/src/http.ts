@@ -2,7 +2,7 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { serveStatic } from '@hono/node-server/serve-static';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
@@ -664,7 +664,7 @@ async function exportSource(c: Context<AppEnv>, drafts: DraftStore, id: string):
   c.header('Cache-Control', 'no-store');
 
   return stream(c, async (output) => {
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
     archive.glob('**/*', {
       cwd: projectDir,
       dot: true,
