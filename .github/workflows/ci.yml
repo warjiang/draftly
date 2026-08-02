@@ -16,7 +16,7 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -61,7 +61,7 @@ jobs:
       DRAFTLY_WORKSPACES_DIR: .draftly/ci-workspaces
       DRAFTLY_TEST_DATABASE_URL: postgres://draftly:draftly@127.0.0.1:5432/draftly
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -117,7 +117,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/login-action@v3
         with:
           registry: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com
