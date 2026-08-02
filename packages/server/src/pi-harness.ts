@@ -15,6 +15,7 @@ type RawPiEvent = {
   toolName?: string;
   toolCallId?: string;
   isError?: boolean;
+  args?: Record<string, unknown>;
   assistantMessageEvent?: {
     type?: string;
     delta?: string;
@@ -36,12 +37,50 @@ function assistantText(message: PiMessage | undefined): string {
     .join("");
 }
 
+function collapse(value: string, max: number): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1)}…`;
+}
+
+function basename(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  return text.split(/[/\\]/).filter(Boolean).pop() || text;
+}
+
+// Distill a tool call's arguments into a short, human-readable trace label so
+// the UI can show *what* the agent did (e.g. which file, which command) rather
+// than only how many times a tool ran.
+function summarizeTool(toolName: string | undefined, args: Record<string, unknown> | undefined): string {
+  if (!args || typeof args !== "object") return "";
+  switch (toolName) {
+    case "bash":
+      return collapse(String(args.command ?? ""), 72);
+    case "read":
+    case "write":
+    case "edit":
+      return basename(args.file_path ?? args.path);
+    case "find":
+    case "grep":
+      return collapse(String(args.pattern ?? args.query ?? ""), 48);
+    case "ls":
+      return basename(args.path) || ".";
+    default:
+      return "";
+  }
+}
+
 function publicPiEvent(event: RawPiEvent): PiPublicEvent {
   const result: PiPublicEvent = { type: event.type };
   if (event.message?.role) result.role = event.message.role;
   if (event.toolName) result.toolName = event.toolName;
   if (event.toolCallId) result.toolCallId = event.toolCallId;
   if (event.isError !== undefined) result.isError = Boolean(event.isError);
+  if (event.type === "tool_execution_start") {
+    const summary = summarizeTool(event.toolName, event.args);
+    if (summary) result.toolSummary = summary;
+  }
   if (event.assistantMessageEvent?.type) {
     result.assistantMessageEvent = {
       type: event.assistantMessageEvent.type,

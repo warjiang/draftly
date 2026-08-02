@@ -829,6 +829,172 @@
   flex: 1;
 }
 
+.session-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.session-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.session-trigger:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--ring);
+}
+
+.session-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.session-trigger-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-trigger-chevron {
+  flex: 0 0 auto;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.session-new-button {
+  flex: 0 0 auto;
+}
+
+.session-menu {
+  width: 17rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.session-menu-label {
+  padding: 0.25rem 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.session-item-check {
+  display: inline-flex;
+  width: 0.875rem;
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.session-item-check svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.session-item-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 0.1rem;
+}
+
+.session-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+.session-item-meta {
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+}
+
+.session-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.session-item:hover .session-item-actions,
+.session-item:focus-within .session-item-actions {
+  opacity: 1;
+}
+
+.session-item-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: calc(var(--radius) - 4px);
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.session-item-action:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.session-item-action-danger:hover {
+  color: var(--destructive);
+}
+
+.session-item-action svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.session-empty {
+  padding: 0.5rem 0.5rem 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.session-new {
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.session-new svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.session-rename-dialog {
+  max-width: 24rem;
+}
+
 .conversation-list {
   display: flex;
   flex-direction: column;
@@ -904,31 +1070,10 @@
   height: 0.75rem;
 }
 
-.assistant-card {
-  width: min(96%, 24rem);
-  border: 0;
-  box-shadow: none;
-  background: var(--muted);
-}
-
-.assistant-card [data-slot="card-title"] {
-  align-items: flex-start;
-  font-size: 0.8125rem;
-}
-
-.assistant-card [data-slot="card-title"] > svg {
-  width: 0.875rem;
-  height: 0.875rem;
-  margin-top: 0.12rem;
-  color: var(--primary);
-}
-
 .progress-list {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--border);
 }
 
 .progress-group,
@@ -1007,6 +1152,33 @@
 .progress-detail {
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+}
+
+/* Tool-call trace lines: label stays compact, the target (file / command)
+   takes the remaining width and truncates so the full trajectory reads like a
+   command log. */
+.progress-call {
+  grid-template-columns: 0.875rem auto minmax(0, 1fr);
+}
+
+.progress-target {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.65rem;
+  color: color-mix(in oklch, var(--muted-foreground) 92%, transparent);
+  text-align: left;
+}
+
+.progress-call .progress-label {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+.progress-call.done .progress-target {
+  color: color-mix(in oklch, var(--muted-foreground) 70%, transparent);
 }
 
 .progress-children {
@@ -1148,12 +1320,45 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--muted) 45%, transparent);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.annotation-item-active {
+  border-color: var(--ring);
+  background: color-mix(in oklab, var(--ring) 12%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ring) 35%, transparent);
 }
 
 .annotation-item-head {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  cursor: pointer;
+}
+
+.annotation-item-head:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.annotation-style-chip {
+  flex: 0 0 auto;
+  height: 1.25rem;
+  padding: 0 0.4rem;
+  gap: 0.15rem;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.annotation-style-chip svg {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.annotation-apply-styles {
+  width: 100%;
+  margin-top: 0.125rem;
 }
 
 .annotation-index {
@@ -3169,40 +3374,59 @@ body.is-resizing-chat {
 }
 
 .message-user {
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
 .message-bubble {
-  max-width: 100%;
-  padding: 0;
-  border-radius: 0;
+  max-width: 82%;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
 }
 
 .user-bubble {
-  background: transparent;
+  background: color-mix(in oklch, var(--muted-foreground) 6%, var(--card));
   color: var(--foreground);
   box-shadow: none;
 }
 
-.message-user::before {
-  margin-right: 0.6rem;
+/* The redesign turned the user bubble transparent/light, so the annotation
+   chips (originally styled for a dark bubble) need readable colors and a subtle
+   surface to read as intentional context rather than blank space. */
+.user-bubble .message-annotations {
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--card) 70%, transparent);
+}
+
+.user-bubble .message-annotation-target {
   color: var(--muted-foreground);
-  font-size: 0.6875rem;
-  font-weight: 650;
-  content: "你";
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
-.assistant-card {
+.user-bubble .message-annotation-comment {
+  color: var(--foreground);
+}
+
+.assistant-trace {
   width: 100%;
-  position: relative;
-  border-left: 2px solid var(--brand-blue);
-  border-radius: 0;
-  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.assistant-card [data-slot="card-header"],
-.assistant-card [data-slot="card-content"] {
-  padding-left: 0.75rem;
+.assistant-trace-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+}
+
+.assistant-trace-note {
+  font-size: 0.8125rem;
+  color: var(--foreground);
 }
 
 .system-message {
@@ -3212,6 +3436,37 @@ body.is-resizing-chat {
 
 .system-message svg {
   color: var(--brand-violet);
+}
+
+.system-message-dismissible {
+  position: relative;
+  padding-right: 1.75rem;
+}
+
+.system-message-close {
+  position: absolute;
+  top: 0.1rem;
+  right: 0.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  border-radius: 0.35rem;
+  color: var(--muted-foreground);
+  opacity: 0.55;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.system-message-close:hover {
+  opacity: 1;
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
+}
+
+.system-message-close svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-top: 0;
+  color: currentColor;
 }
 
 .progress-children::before {

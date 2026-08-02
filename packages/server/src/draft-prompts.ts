@@ -61,21 +61,33 @@ export function buildSourceEditInstruction({
   instruction: string;
   context: string;
   count?: number;
-  annotations?: { context: string; comment: string }[];
+  annotations?: { context: string; comment: string; styleEdits?: Record<string, string> }[];
 }): string {
   if (annotations && annotations.length) {
     const blocks = annotations
-      .map(
-        (item, index) =>
-          `Element ${index + 1}:\n${item.context}\nRequested change: ${item.comment}`,
-      )
+      .map((item, index) => {
+        const lines = [`Element ${index + 1}:`, item.context];
+        if (item.styleEdits && Object.keys(item.styleEdits).length) {
+          const preview = Object.entries(item.styleEdits)
+            .map(([prop, value]) => `${prop}: ${value}`)
+            .join('; ');
+          lines.push(
+            `The user already previewed these inline styles on this element: ${preview}. Treat them as the intended visual result, but implement them the idiomatic way for this project (prefer semantic Tailwind classes / design tokens over literal inline styles).`,
+          );
+        }
+        lines.push(`Requested change: ${item.comment}`);
+        return lines.join('\n');
+      })
       .join('\n\n');
     return [
       STACK_RULES,
-      `The user annotated ${annotations.length} rendered element(s). Apply the change described for each element independently:`,
+      `The user annotated ${annotations.length} rendered element(s). Treat each numbered element independently and apply only the change described for it.`,
+      'Do not restyle, move, or otherwise modify any element that is not listed below. Keep every unannotated part of the page exactly as it is.',
       blocks,
-      instruction?.trim() ? `Additional overall guidance:\n${instruction}` : null,
-      'Locate the actual component(s) in the project and make the smallest complete source change for each element. Preserve accessibility and all component states.',
+      instruction?.trim()
+        ? `Additional overall guidance (applies only where an element has no specific requested change):\n${instruction}`
+        : null,
+      'For each element, locate the actual component in the project and make the smallest complete source change. Preserve accessibility and all component states.',
     ]
       .filter(Boolean)
       .join('\n\n');

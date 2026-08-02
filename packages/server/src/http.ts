@@ -10,6 +10,7 @@ import { defaultDesignMd, parseDesignMd, validateDesignMd } from '../../shared/s
 import type { AuthService, AuthSession } from './auth.js';
 import { isRecoverableSocketError } from './crash-guard.js';
 import {
+  applyDraftStyleEdits,
   editDraftByImage,
   editDraftSource,
   generateDrafts,
@@ -47,9 +48,23 @@ export type ApiAppOptions = {
   editorDir?: string;
   drafts: DraftStore;
   projects?: ProjectStoreLike;
+  conversations?: ConversationStoreLike;
   previewManager?: PreviewManagerLike;
   readiness?: () => Promise<void>;
 };
+
+export interface ConversationStoreLike {
+  list(draftId: string): Promise<unknown>;
+  create(draftId: string, title?: string): Promise<unknown>;
+  rename(draftId: string, conversationId: string, title: string): Promise<void>;
+  remove(draftId: string, conversationId: string): Promise<void>;
+  messages(draftId: string, conversationId: string): Promise<unknown>;
+  appendMessage(
+    draftId: string,
+    conversationId: string,
+    message: { role: string; data: Record<string, unknown> },
+  ): Promise<unknown>;
+}
 
 export interface ProjectStoreLike {
   list(): Promise<ProjectMeta[]>;
@@ -93,6 +108,7 @@ export function createApiApp({
   }),
   previewManager,
   readiness,
+  conversations,
 }: ApiAppOptions): ApiAppBundle {
   if (!drafts) throw new Error('createApiApp: drafts store required');
   if (!auth) throw new Error('createApiApp: auth service required');
@@ -462,6 +478,40 @@ export function createApiApp({
     return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
   });
 
+  app.post('/api/drafts/:id/apply-style', async (c) => {
+    const input = await readJson<{
+      edits?: Array<{
+        file?: string;
+        line?: number;
+        column?: number;
+        styles?: Record<string, string>;
+      }>;
+    }>(c);
+    const edits = (input.edits ?? []).filter(
+      (edit) =>
+        edit &&
+        typeof edit.file === 'string' &&
+        Number.isInteger(edit.line) &&
+        Number.isInteger(edit.column) &&
+        edit.styles &&
+        typeof edit.styles === 'object',
+    ) as Array<{ file: string; line: number; column: number; styles: Record<string, string> }>;
+    if (!edits.length) return json(c, { error: 'style edits required' }, 400);
+    const execute: Operation<Awaited<ReturnType<typeof applyDraftStyleEdits>>> = async (
+      onProgress,
+    ) => {
+      const result = await applyDraftStyleEdits({
+        drafts,
+        id: c.req.param('id'),
+        edits,
+        onProgress,
+      });
+      await projects.touchByDraft(c.req.param('id'));
+      return result;
+    };
+    return isStreaming(c) ? streamResult(c, execute) : sendOperation(c, execute, 502);
+  });
+
   app.post('/api/drafts/:id/edit-by-image', async (c) => {
     const input = await readJson<{ image?: string; instruction?: string }>(c);
     if (!input.image) return json(c, { error: 'image required' }, 400);
@@ -508,6 +558,61 @@ export function createApiApp({
     json(c, await drafts.versionDiff(c.req.param('id'), Number(c.req.param('version')))));
 
   app.get('/api/drafts/:id/export', (c) => exportSource(c, drafts, c.req.param('id')));
+
+  const requireConversations = (c: Context<AppEnv>): ConversationStoreLike | Response => {
+    if (!conversations) return json(c, { error: 'conversations are not available' }, 503);
+    return conversations;
+  };
+
+  app.get('/api/drafts/:id/conversations', async (c) => {
+    const store = requireConversations(c);
+    if (store instanceof Response) return store;
+    return json(c, { conversations: await store.list(c.req.param('id')) });
+  });
+
+  app.post('/api/drafts/:id/conversations', async (c) => {
+    const store = requireConversations(c);
+    if (store instanceof Response) return store;
+    const input = await readJson<{ title?: string }>(c);
+    return json(c, { conversation: await store.create(c.req.param('id'), input.title) });
+  });
+
+  app.patch('/api/drafts/:id/conversations/:cid', async (c) => {
+    const store = requireConversations(c);
+    if (store instanceof Response) return store;
+    const input = await readJson<{ title?: string }>(c);
+    if (!input.title?.trim()) return json(c, { error: 'title required' }, 400);
+    await store.rename(c.req.param('id'), c.req.param('cid'), input.title);
+    return json(c, { ok: true });
+  });
+
+  app.delete('/api/drafts/:id/conversations/:cid', async (c) => {
+    const store = requireConversations(c);
+    if (store instanceof Response) return store;
+    await store.remove(c.req.param('id'), c.req.param('cid'));
+    return json(c, { ok: true });
+  });
+
+  app.get('/api/drafts/:id/conversations/:cid/messages', async (c) => {
+    const store = requireConversations(c);
+    if (store instanceof Response) return store;
+    return json(c, { messages: await store.messages(c.req.param('id'), c.req.param('cid')) });
+  });
+
+  app.post('/api/drafts/:id/conversations/:cid/messages', async (c) => {
+    const store = requireConversations(c);
+    if (store instanceof Response) return store;
+    const input = await readJson<{ role?: string; data?: Record<string, unknown> }>(c);
+    if (!input.role || !input.data || typeof input.data !== 'object') {
+      return json(c, { error: 'role and data required' }, 400);
+    }
+    return json(c, {
+      message: await store.appendMessage(c.req.param('id'), c.req.param('cid'), {
+        role: input.role,
+        data: input.data,
+      }),
+    });
+  });
 
   app.get('/api/templates', async (c) =>
     json(c, { templates: (await loadTemplates()).map(templateSummary) }));

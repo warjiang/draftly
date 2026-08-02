@@ -13,6 +13,7 @@ const PIPELINE_STAGES = {
   validation_completed: { key: "validation", label: "项目构建通过", action: "complete" },
   commit_started: { key: "commit", label: "提交 Git 版本", action: "start" },
   rollback_started: { key: "rollback", label: "恢复目标源码版本", action: "start" },
+  style_edit_started: { key: "style_edit", label: "应用样式修改", action: "start" },
 };
 
 const TOOL_LABELS = {
@@ -69,7 +70,7 @@ export function mergeProgressStep(steps, payload) {
     return complete(withPhase, key, { label, detail });
   };
 
-  const startChild = (items, parentKey, key, label, detail = "", count = 0) => {
+  const startChild = (items, parentKey, key, label, detail = "", count = 0, extra = {}) => {
     const parent = fullKey(parentKey);
     const completed = items.map((item) =>
       item.parent === parent && item.status === "active" ? { ...item, status: "done" } : item);
@@ -80,6 +81,7 @@ export function mergeProgressStep(steps, payload) {
       kind: "child",
       parent,
       status: "active",
+      ...extra,
     });
   };
 
@@ -122,20 +124,27 @@ export function mergeProgressStep(steps, payload) {
   }
   if (event.type === "tool_execution_start") {
     const toolName = event.toolName || "tool";
-    const key = `tool:${toolName}`;
-    const existing = steps.find((item) => item.key === fullKey(key));
-    const count = (existing?.count || 0) + 1;
-    return startChild(
-      steps,
-      "agent",
-      key,
-      TOOL_LABELS[toolName] || `执行 ${toolName}`,
-      count > 1 ? `${count} 次` : "",
-      count,
-    );
+    // Key each invocation by its unique call id so the trace lists every step
+    // the agent took (which file, which command) instead of collapsing them
+    // into an opaque "N times" counter. Fall back to a name+ordinal key when a
+    // call id is missing so repeated calls still get distinct lines.
+    const label = TOOL_LABELS[toolName] || `执行 ${toolName}`;
+    const callId = event.toolCallId
+      || `${toolName}-${steps.filter((item) => item.tool === toolName).length + 1}`;
+    const key = `call:${callId}`;
+    return startChild(steps, "agent", key, label, event.toolSummary || "", 0, {
+      tool: toolName,
+      callId,
+    });
   }
   if (event.type === "tool_execution_end") {
-    return complete(steps, `tool:${event.toolName || "tool"}`);
+    const callId = event.toolCallId;
+    if (callId) return complete(steps, `call:${callId}`);
+    // No call id: complete the most recent still-active call for this tool.
+    const toolName = event.toolName || "tool";
+    const target = [...steps].reverse().find(
+      (item) => item.tool === toolName && item.status === "active");
+    return target ? complete(steps, target.key.slice(prefix.length)) : steps;
   }
   if (event.type === "agent_end" || event.type === "agent_settled") {
     return steps.map((item) =>

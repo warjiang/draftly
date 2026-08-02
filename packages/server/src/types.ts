@@ -31,6 +31,7 @@ export type PiPublicEvent = {
   role?: string;
   toolName?: string;
   toolCallId?: string;
+  toolSummary?: string;
   isError?: boolean;
   assistantMessageEvent?: {
     type: string;
@@ -133,6 +134,7 @@ export type SourceLocator = {
   text?: string;
   component?: string;
   styles?: Record<string, string>;
+  styleEdits?: Record<string, string>;
   comment?: string;
 };
 
