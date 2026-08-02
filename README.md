@@ -9,7 +9,7 @@ PostgreSQL 保存账号、会话、项目、版本和成员关系，S3 兼容对
 
 ## 所需镜像
 
-开发和生产环境只使用以下私有基础镜像：
+本地 Docker Compose 开发环境使用以下阿里云私有镜像，以改善国内网络下的拉取速度：
 
 ```text
 crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/node:24.18.1-bookworm-slim
@@ -18,19 +18,20 @@ crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-minio:
 crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-mc:RELEASE.2025-04-16T18-13-26Z
 ```
 
-应用镜像发布到：
-
-```text
-crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/draftly:<tag>
-```
-
-应用镜像已预装 Pi CLI、Git、`fd` 和 `ripgrep`，运行时不需要再下载 Pi 的搜索工具。
-
-运行 Compose 前先登录私有仓库：
+运行开发 Compose 前先登录该私有仓库：
 
 ```bash
 docker login crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com
 ```
+
+CI 和生产环境直接使用 Node、PostgreSQL、MinIO 和 MinIO Client 的官方镜像，不依赖阿里云
+仓库凭据。Draftly 应用镜像发布到 GitHub Container Registry：
+
+```text
+ghcr.io/warjiang/draftly:<tag>
+```
+
+应用镜像已预装 Pi CLI、Git、`fd` 和 `ripgrep`，运行时不需要再下载 Pi 的搜索工具。
 
 ## GitHub OAuth
 
@@ -130,8 +131,15 @@ npm run dev
 1. 复制 `.env.production.example` 为宿主机上的 `.env.production`，填写所有空值并生成高强度
    PostgreSQL、MinIO 和 Better Auth 密钥。
 2. 创建仅 UID 1000 可读写的 Pi 配置目录，并通过 `PI_CONFIG_DIR` 指向它。
-3. 将 HTTPS 反向代理转发到 `DRAFTLY_PORT`，不要直接暴露 PostgreSQL 或 MinIO。
-4. 拉取镜像、执行 migration，再启动服务：
+3. 如果 GHCR package 是私有的，使用具有 `read:packages` 权限的 classic PAT 登录；公开
+   package 无需登录：
+
+```bash
+printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+```
+
+4. 将 HTTPS 反向代理转发到 `DRAFTLY_PORT`，不要直接暴露 PostgreSQL 或 MinIO。
+5. 拉取镜像、执行 migration，再启动服务：
 
 ```bash
 docker compose --env-file .env.production -f compose.prod.yml config
@@ -175,15 +183,15 @@ mc mirror --overwrite ./draftly-bucket-backup <production-alias>/draftly
 ## GitHub Actions
 
 - `ci.yml`：构建、测试、PostgreSQL/MinIO 集成验证及生产镜像构建。
-- `image.yml`：CI 成功后发布 `linux/amd64`、`linux/arm64` 的 SHA/edge 镜像；版本 tag 发布
-  semver/latest，并生成 SBOM 和 provenance。
+- `image.yml`：使用 `GITHUB_TOKEN` 向 `ghcr.io/warjiang/draftly` 发布 `linux/amd64`、
+  `linux/arm64` 的 SHA/edge 镜像；版本 tag 发布 semver/latest，并生成 SBOM 和 provenance。
 - `deploy.yml`：输入不可变镜像 tag，经 `production` Environment 审批后通过 SSH 部署。
 
 仓库需要配置以下 Actions secrets：
 
 ```text
-ALIYUN_REGISTRY_USERNAME
-ALIYUN_REGISTRY_PASSWORD
+GHCR_USERNAME
+GHCR_TOKEN
 DEPLOY_HOST
 DEPLOY_USER
 DEPLOY_PATH
@@ -192,8 +200,10 @@ DEPLOY_KNOWN_HOSTS
 PRODUCTION_ENV
 ```
 
-`PRODUCTION_ENV` 是不含 `DRAFTLY_IMAGE_TAG` 的完整生产 env 内容。建议保护 `main` 分支并要求
-CI 通过，同时为 `production` Environment 配置人工审批。
+`GHCR_TOKEN` 仅需 `read:packages`，用于生产主机拉取私有 package；如果应用镜像设为公开，
+部署 workflow 可相应移除登录步骤和这两个 secrets。`PRODUCTION_ENV` 是不含
+`DRAFTLY_IMAGE_TAG` 的完整生产 env 内容。建议保护 `main` 分支并要求 CI 通过，同时为
+`production` Environment 配置人工审批。
 
 ## 常用命令
 
