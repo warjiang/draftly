@@ -48,6 +48,10 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
   const [text, setText] = useState("");
   const [loadingProject, setLoadingProject] = useState(true);
   const [projectError, setProjectError] = useState("");
+  const [chatWidth, setChatWidth] = useState(() => {
+    const stored = Number(localStorage.getItem("draftly:chat-width"));
+    return Number.isFinite(stored) && stored >= 320 && stored <= 720 ? stored : 332;
+  });
   const previewRef = useRef(null);
   const fileRef = useRef(null);
   const chatEndRef = useRef(null);
@@ -55,8 +59,7 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
   const draftLoadRef = useRef(0);
   const loadedPreviewOriginRef = useRef(null);
 
-  const messages = useMemo(() => chatStore[activeKey] || [], [chatStore, activeKey]);
-  const readOnly = project?.role === "viewer";
+  const messages = useMemo(() => chatStore[activeKey] || [], [chatStore, activeKey]);  const readOnly = project?.role === "viewer";
   const versions = useMemo(() => current?.meta?.versions?.slice().reverse() || [], [current]);
   const sendingLabel = {
     image: "按截图修改中",
@@ -219,6 +222,11 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
       steps: [],
     });
     setTaskMode(image ? "image" : hasSelection ? "source" : "iterate");
+    if (hasSelection) {
+      setPickMode(false);
+      setSelected([]);
+      sendPreviewMessage({ type: "draftly:clear-selection" });
+    }
     setSending(true);
     try {
       let endpoint = `/api/drafts/${encodeURIComponent(current.meta.id)}/iterate`;
@@ -382,6 +390,26 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
     setSelected((value) => (value || []).map((item) => (item === locator ? { ...item, comment } : item)));
   }, []);
 
+  const startChatResize = useCallback((event) => {
+    event.preventDefault();
+    const onMove = (moveEvent) => {
+      const next = Math.min(720, Math.max(320, window.innerWidth - moveEvent.clientX));
+      setChatWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.classList.remove("is-resizing-chat");
+    };
+    document.body.classList.add("is-resizing-chat");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("draftly:chat-width", String(chatWidth));
+  }, [chatWidth]);
+
   useEffect(() => {
     if (historyOpen || membersOpen || rollbackVersion !== null) return undefined;
     const onKeyDown = (event) => {
@@ -468,7 +496,7 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
           onHistory={() => setHistoryOpen(true)}
           onMembers={() => setMembersOpen(true)}
         />
-        <main id="workspace-main" className="workspace-layout">
+        <main id="workspace-main" className="workspace-layout" style={{ "--chat-width": `${chatWidth}px` }}>
           <PreviewStage
             current={current}
             preview={preview}
@@ -493,6 +521,16 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
             onNewDraft={() => onNavigate("/")}
             readOnly={readOnly}
           />
+          <div
+            className="chat-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整对话面板宽度"
+            onPointerDown={startChatResize}
+            onDoubleClick={() => setChatWidth(332)}
+          >
+            <span className="chat-resizer-grip" />
+          </div>
           <ConversationPanel
             current={current}
             messages={messages}
