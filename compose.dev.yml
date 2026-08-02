@@ -66,6 +66,8 @@ services:
     build:
       context: .
       target: development
+      args:
+        NODE_IMAGE: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/node:24.18.1-bookworm-slim
     environment: *app-environment
     command: npm run db:migrate
     depends_on:
@@ -82,6 +84,8 @@ services:
     build:
       context: .
       target: development
+      args:
+        NODE_IMAGE: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/node:24.18.1-bookworm-slim
     init: true
     environment:
       <<: *app-environment
