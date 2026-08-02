@@ -22,9 +22,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
@@ -121,6 +119,7 @@ export function SourceWorkspace({ current, onClose }) {
   const preferredPath = current?.source?.file;
   const [listState, setListState] = useState({ status: "idle", files: [], error: "" });
   const [activePath, setActivePath] = useState(null);
+  const [openTabs, setOpenTabs] = useState([]);
   const [documents, setDocuments] = useState({});
   const [expanded, setExpanded] = useState(new Set());
   const [query, setQuery] = useState("");
@@ -148,6 +147,7 @@ export function SourceWorkspace({ current, onClose }) {
       const nextPath = defaultSourceFile(result.files, remembered || preferredPath);
       setListState({ status: "ready", files: result.files, error: "" });
       setActivePath(nextPath);
+      setOpenTabs(nextPath ? [nextPath] : []);
       setExpanded(new Set(sourceParentPaths(nextPath)));
     } catch (error) {
       if (!mountedRef.current) return;
@@ -203,8 +203,26 @@ export function SourceWorkspace({ current, onClose }) {
 
   const selectFile = (filePath) => {
     setActivePath(filePath);
+    setOpenTabs((previous) => (previous.includes(filePath) ? previous : [...previous, filePath]));
     sessionStorage.setItem(`draftly:source-file:${draftId}`, filePath);
     if (window.matchMedia("(max-width: 48rem)").matches) setSidebarOpen(false);
+  };
+
+  const activateTab = (filePath) => {
+    setActivePath(filePath);
+    sessionStorage.setItem(`draftly:source-file:${draftId}`, filePath);
+  };
+
+  const closeTab = (filePath) => {
+    const index = openTabs.indexOf(filePath);
+    if (index === -1) return;
+    const next = openTabs.filter((path) => path !== filePath);
+    setOpenTabs(next);
+    if (filePath === activePath) {
+      const fallback = next[index] ?? next[index - 1] ?? null;
+      setActivePath(fallback);
+      if (fallback) sessionStorage.setItem(`draftly:source-file:${draftId}`, fallback);
+    }
   };
 
   const retrySource = () => {
@@ -224,10 +242,9 @@ export function SourceWorkspace({ current, onClose }) {
         <div className="source-workspace-heading">
           <span className="source-workspace-mark"><Code2Icon /></span>
           <div className="min-w-0">
-            <DialogTitle>项目源码</DialogTitle>
+            <h2 className="source-workspace-title">项目源码</h2>
             <p>{current?.meta?.title || "React 项目"}</p>
           </div>
-          {current?.version ? <Badge variant="secondary">v{current.version}</Badge> : null}
         </div>
         <Button variant="ghost" size="icon" aria-label="关闭源码工作台" onClick={onClose}>
           <XIcon />
@@ -316,10 +333,34 @@ export function SourceWorkspace({ current, onClose }) {
                 <PanelLeftOpenIcon />
               </Button>
             ) : null}
-            {activePath ? (
-              <div className="source-editor-tab" title={activePath}>
-                {fileIcon(activePath)}
-                <span>{activePath.split("/").at(-1)}</span>
+            {openTabs.length ? (
+              <div className="source-editor-tablist" role="tablist" aria-label="已打开的文件">
+                {openTabs.map((path) => (
+                  <div
+                    key={path}
+                    className={cn("source-editor-tab", path === activePath && "is-active")}
+                    role="tab"
+                    aria-selected={path === activePath}
+                  >
+                    <button
+                      type="button"
+                      className="source-editor-tab-label"
+                      title={path}
+                      onClick={() => activateTab(path)}
+                    >
+                      {fileIcon(path)}
+                      <span>{path.split("/").at(-1)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="source-editor-tab-close"
+                      aria-label={`关闭 ${path}`}
+                      onClick={() => closeTab(path)}
+                    >
+                      <XIcon />
+                    </button>
+                  </div>
+                ))}
               </div>
             ) : (
               <span className="source-editor-tab-placeholder">选择文件</span>

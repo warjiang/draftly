@@ -12,20 +12,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { SourceWorkspace } from "@/components/source-workspace";
 import { cn } from "@/lib/utils";
 
 export function AppOverlays({
   current,
   versions,
   historyOpen,
-  sourceOpen,
   rollbackVersion,
   onHistoryChange,
-  onSourceChange,
   onRollbackRequest,
   onRollbackCancel,
   onRollbackConfirm,
@@ -65,12 +61,6 @@ export function AppOverlays({
           </ScrollArea>
         </SheetContent>
       </Sheet>
-
-      <Dialog open={sourceOpen} onOpenChange={onSourceChange}>
-        <DialogContent className="source-dialog" showCloseButton={false}>
-          <SourceWorkspace current={current} onClose={() => onSourceChange(false)} />
-        </DialogContent>
-      </Dialog>
 
       <AlertDialog open={rollbackVersion !== null} onOpenChange={(open) => {
         if (!open) onRollbackCancel();

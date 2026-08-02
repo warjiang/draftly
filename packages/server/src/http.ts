@@ -8,6 +8,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
 import { defaultDesignMd, parseDesignMd, validateDesignMd } from '../../shared/src/design-md.js';
 import type { AuthService, AuthSession } from './auth.js';
+import { isRecoverableSocketError } from './crash-guard.js';
 import {
   editDraftByImage,
   editDraftSource,
@@ -392,12 +393,18 @@ export function createApiApp({
     const headers = new Headers(c.req.raw.headers);
     headers.delete('host');
     headers.delete('cookie');
-    const response = await fetch(target, {
-      method: c.req.method,
-      headers,
-      body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
-      redirect: 'manual',
-    });
+    let response: Response;
+    try {
+      response = await fetch(target, {
+        method: c.req.method,
+        headers,
+        body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
+        redirect: 'manual',
+      });
+    } catch (error) {
+      if (!isRecoverableSocketError(error)) throw error;
+      return json(c, { error: 'preview server is restarting, retry in a moment' }, 502);
+    }
     const responseHeaders = new Headers(response.headers);
     responseHeaders.delete('content-security-policy');
     responseHeaders.set('Cache-Control', 'no-store');
@@ -428,16 +435,25 @@ export function createApiApp({
     const input = await readJson<{
       instruction?: string;
       locator?: SourceLocator;
+      locators?: SourceLocator[];
     }>(c);
-    if (!input.instruction?.trim()) return json(c, { error: 'instruction required' }, 400);
-    if (!input.locator) return json(c, { error: 'locator required' }, 400);
+    const locatorList = input.locators?.length
+      ? input.locators
+      : input.locator
+        ? [input.locator]
+        : [];
+    if (!locatorList.length) return json(c, { error: 'locator required' }, 400);
+    const hasComments = locatorList.some((loc) => loc.comment?.trim());
+    if (!input.instruction?.trim() && !hasComments) {
+      return json(c, { error: 'instruction required' }, 400);
+    }
     const execute: Operation<Awaited<ReturnType<typeof editDraftSource>>> = async (onProgress) => {
       const result = await editDraftSource({
         drafts,
         provider,
         id: c.req.param('id'),
-        locator: input.locator!,
-        instruction: input.instruction!,
+        locators: locatorList,
+        instruction: input.instruction ?? '',
         onProgress,
       });
       await projects.touchByDraft(c.req.param('id'));

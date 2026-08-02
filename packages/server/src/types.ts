@@ -133,6 +133,7 @@ export type SourceLocator = {
   text?: string;
   component?: string;
   styles?: Record<string, string>;
+  comment?: string;
 };
 
 export type Preview = {

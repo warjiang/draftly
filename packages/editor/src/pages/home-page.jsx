@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { HomeComposer } from "@/components/home-composer";
 import { ProjectLibrary } from "@/components/project-library";
 import { AccountMenu } from "@/components/account-menu";
+import { BrandLockup } from "@/components/brand-logo";
 import { Toaster, toast } from "@/components/ui/toast";
 import { api, apiStream } from "@/lib/api";
 import { projectPath } from "@/lib/router";
@@ -26,7 +27,7 @@ export function HomePage({ user, onSignOut, onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [variants, setVariants] = useState("3");
+  const [variants, setVariants] = useState("1");
   const [selectedDesign, setSelectedDesign] = useState({ type: "template", id: "vercel" });
   const [importedDesign, setImportedDesign] = useState(null);
   const [importError, setImportError] = useState("");
@@ -133,8 +134,7 @@ export function HomePage({ user, onSignOut, onNavigate }) {
           event.preventDefault();
           onNavigate("/");
         }}>
-          <span>draftly</span>
-          <small>LOCAL PROTOTYPE STUDIO</small>
+          <BrandLockup />
         </a>
         <p>项目优先的 AI 视觉工作区</p>
         <AccountMenu user={user} onSignOut={onSignOut} onProjectsChanged={loadHome} />

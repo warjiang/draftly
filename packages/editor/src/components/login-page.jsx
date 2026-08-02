@@ -1,4 +1,5 @@
-import { GitBranchIcon, SparklesIcon } from "lucide-react";
+import { GitBranchIcon } from "lucide-react";
+import { BrandLockup } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -7,7 +8,7 @@ export function LoginPage({ error, onLogin }) {
     <main className="login-page">
       <Card className="login-card">
         <CardHeader>
-          <span className="login-mark"><SparklesIcon /></span>
+          <BrandLockup className="login-lockup" />
           <CardTitle>登录 Draftly</CardTitle>
           <CardDescription>使用 GitHub 账号进入你的 AI 原型工作区。</CardDescription>
         </CardHeader>

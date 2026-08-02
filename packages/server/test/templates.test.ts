@@ -42,6 +42,15 @@ test('templateSummary 含色板预览数据', async () => {
   assert.deepEqual(s.tags.color, ['紫', '蓝']);
 });
 
+test('templateSummary 带完整 token 供设计系统展示', async () => {
+  const stripe = (await loadTemplates()).find((t) => t.id === 'stripe');
+  assert.ok(stripe);
+  const { meta } = templateSummary(stripe);
+  assert.ok(meta.typography?.scale?.body);
+  assert.ok(meta.radius?.md);
+  assert.ok(meta.spacing?.unit);
+});
+
 /* ---------- HTTP 集成：模板列表 + 详情（M4 风格预设数据源） ---------- */
 
 let tmp: string;

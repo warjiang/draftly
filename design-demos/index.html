@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draftly · 三方向设计初稿</title>
+  <style>
+    :root {
+      --ink: #25224b;
+      --paper: #f6f3ed;
+      --line: #d8d3df;
+      --violet: #7151f5;
+      --blue: #32b8f2;
+      --yellow: #ffc43d;
+      --coral: #ff654f;
+      font-family: "Geist Variable", Geist, "PingFang SC", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); }
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 32px;
+      padding: 42px 48px 30px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand img { width: 48px; height: 48px; }
+    h1 { margin: 0; font-size: clamp(32px, 3vw, 56px); letter-spacing: -.055em; line-height: .95; }
+    header p { max-width: 560px; margin: 0; color: #656078; font-size: 14px; line-height: 1.65; }
+    main { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 20px; }
+    article {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    article:nth-child(1) { border-top: 5px solid var(--blue); background: #17152f; color: #f6f2ea; }
+    article:nth-child(2) { border-top: 5px solid var(--violet); }
+    article:nth-child(3) { border-top: 5px solid var(--coral); }
+    .copy { min-height: 166px; padding: 20px; border-bottom: 1px solid var(--line); }
+    .logic {
+      margin: 0 0 12px;
+      color: var(--violet);
+      font: 700 11px/1.2 ui-monospace, monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    article:nth-child(1) .logic { color: var(--blue); }
+    h2 { margin: 0 0 8px; font-size: 25px; letter-spacing: -.04em; }
+    .copy p:last-child { margin: 0; color: #777187; font-size: 13px; line-height: 1.55; }
+    article:nth-child(1) .copy p:last-child { color: #aaa5bf; }
+    .shots { display: grid; gap: 1px; background: var(--line); }
+    .shot { position: relative; overflow: hidden; background: #eceaf0; aspect-ratio: 16 / 10; }
+    .shot img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: top; }
+    .shot span {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 5px 8px;
+      color: #fff;
+      background: rgba(37, 34, 75, .84);
+      font: 700 10px/1 ui-monospace, monospace;
+      letter-spacing: .08em;
+    }
+    .links { display: flex; justify-content: space-between; gap: 8px; padding: 14px 18px; }
+    a { color: inherit; font-size: 12px; font-weight: 700; text-underline-offset: 3px; }
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 22px 48px 32px;
+      color: #656078;
+      font-size: 13px;
+    }
+    .palette { display: flex; gap: 4px; }
+    .palette span { width: 34px; height: 8px; }
+    @media (max-width: 1000px) {
+      header { align-items: flex-start; flex-direction: column; padding: 28px 20px 22px; }
+      main { grid-template-columns: 1fr; }
+      .copy { min-height: 0; }
+      footer { align-items: flex-start; flex-direction: column; padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="../assets/app-icons/source/logo.svg" alt="Draftly 织巢鸟 Logo">
+      <h1>三种编织方式</h1>
+    </div>
+    <p>同一套真实产品内容、同一套织巢鸟品牌资产，分别探索夜间编辑台、画布优先工具与模块化品牌系统。每版都包含项目首页与核心工作区。</p>
+  </header>
+  <main>
+    <article>
+      <div class="copy">
+        <p class="logic">01 · Roulette / Dark Editorial</p>
+        <h2>Night Weave<br>夜织工作台</h2>
+        <p>深紫夜间编辑台、等宽状态与蓝色连续路径。品牌最强，气质最锐利，适合把 Draftly 塑造成面向专业创作者的独立工具。</p>
+      </div>
+      <div class="shots">
+        <div class="shot"><img src="screenshots/direction-a-night-weave-home-desktop.png" alt="Night Weave 项目首页"><span>HOME</span></div>
+        <div class="shot"><img src="screenshots/direction-a-night-weave-workspace-desktop.png" alt="Night Weave 核心工作区"><span>WORKSPACE</span></div>
+      </div>
+      <div class="links"><a href="direction-a-night-weave.html">打开交互稿</a><span>高识别 · 高密度</span></div>
+    </article>
+    <article>
+      <div class="copy">
+        <p class="logic">02 · Reality Benchmark</p>
+        <h2>Woven Canvas<br>编织画布</h2>
+        <p>明亮、克制、画布优先，借鉴成熟协作设计工具的层级与操作效率，再用连续路径建立 Draftly 自己的生成叙事。</p>
+      </div>
+      <div class="shots">
+        <div class="shot"><img src="screenshots/direction-b-woven-canvas-home-desktop.png" alt="Woven Canvas 项目首页"><span>HOME</span></div>
+        <div class="shot"><img src="screenshots/direction-b-woven-canvas-workspace-desktop.png" alt="Woven Canvas 核心工作区"><span>WORKSPACE</span></div>
+      </div>
+      <div class="links"><a href="direction-b-woven-canvas.html">打开交互稿</a><span>高效率 · 低风险</span></div>
+    </article>
+    <article>
+      <div class="copy">
+        <p class="logic">03 · Brand Studio System</p>
+        <h2>Color Assembly<br>彩色构造</h2>
+        <p>把羽片、编织环和不对称构造变成模块化产品语言。比画布版更有品牌记忆，又保持明亮、专业与可扩展。</p>
+      </div>
+      <div class="shots">
+        <div class="shot"><img src="screenshots/direction-c-color-assembly-home-desktop.png" alt="Color Assembly 项目首页"><span>HOME</span></div>
+        <div class="shot"><img src="screenshots/direction-c-color-assembly-workspace-desktop.png" alt="Color Assembly 核心工作区"><span>WORKSPACE</span></div>
+      </div>
+      <div class="links"><a href="direction-c-color-assembly.html">打开交互稿</a><span>品牌化 · 平衡</span></div>
+    </article>
+  </main>
+  <footer>
+    <span>选择一版深化，或指定组合，例如「B 的工作区 + C 的首页品牌语言」。</span>
+    <span class="palette" aria-label="Draftly 品牌色">
+      <span style="background:#25224b"></span><span style="background:#7151f5"></span><span style="background:#32b8f2"></span><span style="background:#ffc43d"></span><span style="background:#ff654f"></span>
+    </span>
+  </footer>
+</body>
+</html>

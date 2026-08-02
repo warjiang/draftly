@@ -4,6 +4,7 @@ import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
 import { createAuthService } from './auth.js';
 import { readConfig } from './config.js';
+import { installCrashGuards } from './crash-guard.js';
 import { assertDatabaseReady, createDatabase } from './db/client.js';
 import { DraftStore } from './drafts.js';
 import { DatabaseProjectStore } from './db-projects.js';
@@ -19,6 +20,7 @@ import { WorkspaceManager } from './storage/workspace-manager.js';
 import { errorWithStatus } from './types.js';
 
 loadEnv();
+installCrashGuards();
 
 const config = readConfig();
 const host = config.host;

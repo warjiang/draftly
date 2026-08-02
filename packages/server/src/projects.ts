@@ -32,7 +32,11 @@ function defaultProjectDesign(): ProjectDesign {
 }
 
 function projectTitle(prompt: string): string {
-  return prompt.replace(/\s+/g, ' ').trim().slice(0, 40) || '未命名项目';
+  const normalized = prompt.replace(/\s+/g, ' ').trim();
+  if (!normalized) return '未命名项目';
+  const firstSentence = normalized.split(/[。！？.!?\n]/)[0].trim() || normalized;
+  const name = firstSentence.slice(0, 24).replace(/[，,、:：;；\-\s]+$/u, '').trim();
+  return name || '未命名项目';
 }
 
 export class ProjectStore {

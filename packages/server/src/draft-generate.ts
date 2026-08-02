@@ -190,13 +190,15 @@ export async function editDraftSource({
   provider,
   id,
   locator,
+  locators,
   instruction,
   onProgress,
 }: {
   drafts: DraftStore;
   provider?: WorkspaceProvider;
   id: string;
-  locator: SourceLocator;
+  locator?: SourceLocator;
+  locators?: SourceLocator[];
   instruction: string;
   onProgress?: ProgressHandler;
 }): Promise<DraftResult & {
@@ -206,25 +208,52 @@ export async function editDraftSource({
     component: string | null;
   };
 }> {
-  if (!instruction?.trim()) throw new Error('instruction required');
-  const sourceContext = await sourceContextForLocator({ drafts, id, locator });
+  const locatorList = locators?.length ? locators : locator ? [locator] : [];
+  if (!locatorList.length) throw new Error('locator required');
+  const hasComments = locatorList.some((loc) => loc.comment?.trim());
+  if (!instruction?.trim() && !hasComments) throw new Error('instruction required');
+  const contexts = await Promise.all(
+    locatorList.map((loc) => sourceContextForLocator({ drafts, id, locator: loc })),
+  );
+  const primary = contexts[0];
+  const primaryLocator = locatorList[0];
   onProgress?.({
     type: 'pipeline',
     stage: 'source_located',
-    file: sourceContext.file,
-    line: locator.line,
-    component: sourceContext.component,
+    file: primary.file,
+    line: primaryLocator.line,
+    component: primary.component,
   });
+  const combinedContext =
+    contexts.length > 1
+      ? contexts
+          .map((ctx, index) => `Element ${index + 1} (${ctx.file}):\n${ctx.context}`)
+          .join('\n\n')
+      : primary.context;
+  const historyInstruction = instruction?.trim()
+    ? instruction
+    : `标注修改 ${locatorList.length} 处元素`;
+  const taskInstruction = hasComments
+    ? buildSourceEditInstruction({
+        instruction,
+        context: combinedContext,
+        annotations: locatorList.map((loc, index) => ({
+          context: `${contexts[index].file}:\n${contexts[index].context}`,
+          comment: loc.comment?.trim() || instruction?.trim() || '按整体目标调整该元素',
+        })),
+      })
+    : buildSourceEditInstruction({
+        instruction,
+        context: combinedContext,
+        count: contexts.length,
+      });
   const result = await executeVersionTask({
     drafts,
     provider,
     id,
     kind: 'edit-source',
-    instruction,
-    taskInstruction: buildSourceEditInstruction({
-      instruction,
-      context: sourceContext.context,
-    }),
+    instruction: historyInstruction,
+    taskInstruction,
     onProgress,
   });
   onProgress?.({ type: 'pipeline', stage: 'version_saved', version: result.version });
@@ -233,9 +262,9 @@ export async function editDraftSource({
     title: result.meta.title,
     version: result.version,
     locator: {
-      file: sourceContext.file,
-      line: locator.line,
-      component: sourceContext.component,
+      file: primary.file,
+      line: primaryLocator.line,
+      component: primary.component,
     },
   };
 }
