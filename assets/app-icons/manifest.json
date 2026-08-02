@@ -20,8 +20,7 @@
     }
   },
   "selection": {
-    "number": 4,
-    "path": "candidates/candidate-4.png",
+    "path": "source/base-transparent.png",
     "direction": "Expressive minimal mark with an unexpected visual metaphor, dynamic balance, and strong motion.",
     "sha256": "5b6981a1ab1faf33c255fd7cc5b15797f8db4c011ca84db50808d54ff633dc63"
   },
@@ -35,46 +34,6 @@
       "sha256": "229bbf217d8a78b1f1daa6936100e17e9d73c56cba52cb2cd429d7f8f3afa441",
       "width": 1400,
       "height": 760,
-      "format": "PNG"
-    },
-    {
-      "path": "candidate-preview.png",
-      "bytes": 176370,
-      "sha256": "deb53524fadc43307292e487c44114b70cb65f909ed6d00292371f3cd9edee0b",
-      "width": 1280,
-      "height": 760,
-      "format": "PNG"
-    },
-    {
-      "path": "candidates/candidate-1.png",
-      "bytes": 451185,
-      "sha256": "10c0a97dc8225579f50d66cc27db05e73cb748433119a9bfd83acf17dac0e547",
-      "width": 1024,
-      "height": 1024,
-      "format": "PNG"
-    },
-    {
-      "path": "candidates/candidate-2.png",
-      "bytes": 407952,
-      "sha256": "1ac2d3c1dfb926086768b8afee0fd3cc9c76f26d9002c41e0ab97bb83266db50",
-      "width": 1024,
-      "height": 1024,
-      "format": "PNG"
-    },
-    {
-      "path": "candidates/candidate-3.png",
-      "bytes": 416959,
-      "sha256": "07c4591c0c0c7e8a3cd3417ff7032e9d780defcb3342180e3b4de70df8b44dfc",
-      "width": 1024,
-      "height": 1024,
-      "format": "PNG"
-    },
-    {
-      "path": "candidates/candidate-4.png",
-      "bytes": 442852,
-      "sha256": "5b6981a1ab1faf33c255fd7cc5b15797f8db4c011ca84db50808d54ff633dc63",
-      "width": 1024,
-      "height": 1024,
       "format": "PNG"
     },
     {
@@ -196,11 +155,6 @@
       "width": 1320,
       "height": 760,
       "format": "PNG"
-    },
-    {
-      "path": "selection.json",
-      "bytes": 11803,
-      "sha256": "3d70c08bdeb8c996ee078706402816b20cef086c2451493ba325f3967c7e1f0c"
     },
     {
       "path": "source/base-solid.png",
