@@ -79,6 +79,21 @@ test('requires a session for business APIs while keeping health and templates pu
   assert.equal((await anonymous.request('/api/templates')).status, 200);
 });
 
+test('returns the authenticated Better Auth user from the current session', async () => {
+  const response = await app.request('/api/me');
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json() as { user: { id: string; githubLogin: string } }).user, {
+    id: 'test-user',
+    name: 'Test User',
+    email: 'test@example.com',
+    emailVerified: true,
+    image: null,
+    githubLogin: 'test-user',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+});
+
 test('validates imported DESIGN.md before project generation', async () => {
   const invalid = await app.request('/api/designs/validate', {
     method: 'POST',
