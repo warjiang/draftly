@@ -108,7 +108,18 @@ export class PreviewManager implements PreviewManagerLike {
     const url = `http://${this.host}:${port}/`;
     const child = spawn(
       'npm',
-      ['run', 'dev', '--', '--host', this.host, '--port', String(port), '--strictPort'],
+      [
+        'run',
+        'dev',
+        '--',
+        '--host',
+        this.host,
+        '--port',
+        String(port),
+        '--strictPort',
+        '--base',
+        `/api/previews/${encodeURIComponent(id)}/`,
+      ],
       {
         cwd: this.drafts.projectDir(id),
         env: { ...process.env, BABEL_ENV: 'development' },

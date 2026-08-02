@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm test
+      - run: npm run smoke
+
+  integration:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/postgres:17.6-bookworm
+        credentials:
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+        env:
+          POSTGRES_DB: draftly
+          POSTGRES_USER: draftly
+          POSTGRES_PASSWORD: draftly
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U draftly -d draftly"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      minio:
+        image: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-minio:RELEASE.2025-04-22T22-12-26Z
+        credentials:
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+        env:
+          MINIO_ROOT_USER: draftly
+          MINIO_ROOT_PASSWORD: draftly-local-secret
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -f http://127.0.0.1:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://draftly:draftly@127.0.0.1:5432/draftly
+      BETTER_AUTH_SECRET: integration-test-secret-at-least-32-characters
+      BETTER_AUTH_URL: http://127.0.0.1:4173
+      GITHUB_CLIENT_ID: integration-placeholder
+      GITHUB_CLIENT_SECRET: integration-placeholder
+      S3_ENDPOINT: http://127.0.0.1:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: draftly
+      S3_ACCESS_KEY_ID: draftly
+      S3_SECRET_ACCESS_KEY: draftly-local-secret
+      S3_FORCE_PATH_STYLE: "true"
+      DRAFTLY_WORKSPACES_DIR: .draftly/ci-workspaces
+      DRAFTLY_TEST_DATABASE_URL: postgres://draftly:draftly@127.0.0.1:5432/draftly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: docker/login-action@v3
+        with:
+          registry: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+      - name: Create object bucket
+        run: >-
+          docker run --rm --network host
+          crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-mc:RELEASE.2025-04-16T18-13-26Z
+          sh -c "mc alias set local http://127.0.0.1:9000 draftly draftly-local-secret &&
+          mc mb --ignore-existing local/draftly"
+      - run: npm run db:migrate
+      - run: npm run test --workspace @draftly/server
+      - run: npm run build
+      - name: Verify production service readiness
+        run: |
+          node packages/server/dist/dev.js > /tmp/draftly-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/api/health/ready; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/draftly-server.log
+          exit 1
+
+  container:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: production
+          push: false
+          load: true
+          tags: draftly:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

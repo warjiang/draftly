@@ -86,6 +86,7 @@ export async function generateDrafts({
   prompt,
   variants = 1,
   designMd = null,
+  projectId,
   onProgress,
 }: {
   drafts: DraftStore;
@@ -93,6 +94,7 @@ export async function generateDrafts({
   prompt: string;
   variants?: string | number;
   designMd?: string | null;
+  projectId?: string;
   onProgress?: ProgressHandler;
 }): Promise<{ drafts: DraftResult[] }> {
   if (!prompt?.trim()) throw new Error('prompt required');
@@ -107,6 +109,7 @@ export async function generateDrafts({
       const draft = await drafts.createProject({
         prompt,
         designMd,
+        projectId,
         onProgress: (event) => onProgress?.({ ...event, variant }),
       });
       try {

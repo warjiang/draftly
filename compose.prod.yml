@@ -1,0 +1,119 @@
+name: draftly
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 4173
+  DATABASE_URL: postgres://draftly:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/draftly
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?GITHUB_CLIENT_ID is required}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?GITHUB_CLIENT_SECRET is required}
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-draftly}
+  S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+  S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+  S3_FORCE_PATH_STYLE: "true"
+  DRAFTLY_WORKSPACES_DIR: /var/lib/draftly/workspaces
+  TRUST_PROXY: ${TRUST_PROXY:-true}
+
+services:
+  postgres:
+    image: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: draftly
+      POSTGRES_USER: draftly
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [backend]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U draftly -d draftly"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    networks: [backend]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-mc:RELEASE.2025-04-16T18-13-26Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" && mc mb --ignore-existing "local/$$S3_BUCKET"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET:-draftly}
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
+  migrate:
+    image: ${DRAFTLY_IMAGE:-crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/draftly}:${DRAFTLY_IMAGE_TAG:?DRAFTLY_IMAGE_TAG is required}
+    environment: *app-environment
+    command: node packages/server/dist/db/migrate.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks: [backend]
+    restart: "no"
+
+  app:
+    image: ${DRAFTLY_IMAGE:-crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/draftly}:${DRAFTLY_IMAGE_TAG}
+    init: true
+    read_only: true
+    environment:
+      <<: *app-environment
+      DRAFTLY_PI_COMMAND: ${DRAFTLY_PI_COMMAND:-pi}
+      DRAFTLY_PI_PROVIDER: ${DRAFTLY_PI_PROVIDER:-}
+      DRAFTLY_PI_MODEL: ${DRAFTLY_PI_MODEL:-}
+      DRAFTLY_PI_THINKING: ${DRAFTLY_PI_THINKING:-medium}
+    ports:
+      - "${DRAFTLY_PORT:-4173}:4173"
+    volumes:
+      - workspace-cache:/var/lib/draftly/workspaces
+      - ${PI_CONFIG_DIR:?PI_CONFIG_DIR is required}:/home/node/.pi:ro
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+    networks: [frontend, backend]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4173/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+networks:
+  frontend:
+  backend:
+    internal: true
+
+volumes:
+  postgres-data:
+  minio-data:
+  workspace-cache:

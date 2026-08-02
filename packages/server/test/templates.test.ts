@@ -6,6 +6,7 @@ import path from 'node:path';
 import { parseDesignMd } from '../../shared/src/design-md.js';
 import { DraftStore } from '../src/drafts.js';
 import { createApiApp } from '../src/http.js';
+import { createTestAuth } from './test-auth.js';
 import { loadTemplates, validateTemplate, templateSummary } from '../src/templates.js';
 
 test('模板库加载 10 个且全部通过 schema 校验', async () => {
@@ -49,6 +50,7 @@ before(async () => {
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'draftly-tpl-'));
   const drafts = new DraftStore({ rootDir: path.join(tmp, 'drafts') });
   ({ app } = createApiApp({
+    auth: createTestAuth(),
     provider: { runTask: async () => 'unused' },
     drafts,
     previewManager: {

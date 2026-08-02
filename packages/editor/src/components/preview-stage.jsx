@@ -103,6 +103,7 @@ export function PreviewStage({
   onTogglePick,
   onOpenSource,
   onNewDraft,
+  readOnly = false,
 }) {
   if (!current) {
     if (sending) return <GenerationPlaceholder variantCount={variantCount} />;
@@ -169,7 +170,7 @@ export function PreviewStage({
                   {selected.component || selected.tagName}
                 </Badge>
               ) : null}
-              <Button variant={pickMode ? "default" : "outline"} onClick={onTogglePick}>
+              <Button disabled={readOnly} variant={pickMode ? "default" : "outline"} onClick={onTogglePick}>
                 <MousePointer2Icon data-icon="inline-start" />
                 {pickMode ? "退出点选" : "点选修改"}
               </Button>

@@ -12,6 +12,7 @@ import {
   iterateDraft,
 } from '../src/draft-generate.js';
 import { createApiApp } from '../src/http.js';
+import { createTestAuth } from './test-auth.js';
 import { migrateLegacyDrafts } from '../src/migration.js';
 import { runCommand } from '../src/process.js';
 import { sourceContextForLocator } from '../src/source-locator.js';
@@ -341,6 +342,7 @@ test('HTTP source API streams progress, serves preview metadata, exports ZIP, an
     async shutdown() {},
   } satisfies PreviewManagerLike;
   const { app } = createApiApp({
+    auth: createTestAuth(),
     provider: executor,
     drafts: store,
     editorDir,
@@ -422,6 +424,7 @@ test('project API creates linked variants and validates imported DESIGN.md', asy
   await fs.mkdir(editorDir, { recursive: true });
   await fs.writeFile(path.join(editorDir, 'index.html'), '<div id="root"></div>');
   const { app } = createApiApp({
+    auth: createTestAuth(),
     provider: executor,
     drafts: store,
     projects,

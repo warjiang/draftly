@@ -170,13 +170,14 @@ export function ConversationPanel({
   onRemoveSelected,
   onSend,
   onSelectVariant,
+  readOnly = false,
 }) {
   return (
     <aside className="conversation-panel" aria-label="设计对话">
       <div className="conversation-header">
         <div>
           <h2>设计对话</h2>
-          <p>{sending ? sendingLabel : current ? `${current.meta.title} · v${current.version}` : "描述你的页面目标"}</p>
+          <p>{readOnly ? "Viewer 权限 · 可查看但不能修改" : sending ? sendingLabel : current ? `${current.meta.title} · v${current.version}` : "描述你的页面目标"}</p>
         </div>
         <Badge variant={sending ? "secondary" : "outline"}>
           {sending ? "任务执行中" : current ? "可继续迭代" : "新建模式"}
@@ -220,14 +221,14 @@ export function ConversationPanel({
               }
             }}
             placeholder={current ? "描述下一步修改…" : "例如：为独立开发者做一个克制、有编辑感的产品发布页"}
-            disabled={sending}
+            disabled={sending || readOnly}
             className="composer-textarea"
             aria-label="设计需求"
           />
           <div className="composer-actions">
             <Tooltip>
               <TooltipTrigger
-                render={<Button variant="ghost" size="icon" disabled={sending || !current} aria-label="附加参考截图" />}
+                render={<Button variant="ghost" size="icon" disabled={sending || !current || readOnly} aria-label="附加参考截图" />}
                 onClick={() => fileRef.current?.click()}
               >
                 <PaperclipIcon />
@@ -260,7 +261,7 @@ export function ConversationPanel({
             <Button
               size="icon-lg"
               className="ml-auto"
-              disabled={sending || !text.trim()}
+              disabled={sending || readOnly || !text.trim()}
               aria-label={sending ? sendingLabel : "发送"}
               aria-busy={sending}
               onClick={onSend}

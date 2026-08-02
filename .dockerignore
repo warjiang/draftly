@@ -1,0 +1,13 @@
+.git
+.github
+.draftly
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+coverage
+artifacts
+*.log
+.DS_Store

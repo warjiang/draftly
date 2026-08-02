@@ -158,10 +158,12 @@ export class DraftStore {
     prompt,
     designMd = null,
     onProgress,
+    projectId: _projectId,
   }: {
     prompt?: string;
     designMd?: string | null;
     onProgress?: ProgressHandler;
+    projectId?: string;
   } = {}): Promise<DraftMeta> {
     const id = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
     const draftDir = this._dir(id);

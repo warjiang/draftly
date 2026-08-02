@@ -5,9 +5,14 @@ export async function api(path, opts = {}) {
     headers: hasBody ? { "Content-Type": "application/json" } : undefined,
     body: hasBody ? JSON.stringify(opts.body) : undefined,
     signal: opts.signal,
+    credentials: "same-origin",
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `${response.status}`);
+  if (!response.ok) {
+    const error = new Error(data.error || `${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -16,6 +21,7 @@ export async function apiStream(path, body, onProgress) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    credentials: "same-origin",
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));

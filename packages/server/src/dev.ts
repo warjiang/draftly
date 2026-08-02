@@ -2,36 +2,52 @@
 import fs from 'node:fs';
 import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
+import { createAuthService } from './auth.js';
+import { readConfig } from './config.js';
+import { assertDatabaseReady, createDatabase } from './db/client.js';
 import { DraftStore } from './drafts.js';
+import { DatabaseProjectStore } from './db-projects.js';
 import { createApiApp } from './http.js';
 import { loadEnv } from './load-env.js';
 import { resolveDraftsDir } from './paths.js';
 import { resolveProjectsDir } from './paths.js';
 import { createPiHarnessProvider } from './pi-harness.js';
 import { ProjectStore } from './projects.js';
+import { PersistentDraftStore } from './persistent-drafts.js';
+import { S3ObjectStore } from './storage/s3-object-store.js';
+import { WorkspaceManager } from './storage/workspace-manager.js';
 import { errorWithStatus } from './types.js';
 
 loadEnv();
 
-const host = process.env.HOST || '127.0.0.1';
-const port = Number.parseInt(process.env.PORT || '4173', 10);
-const draftsDir = resolveDraftsDir();
-const projectsDir = resolveProjectsDir();
+const config = readConfig();
+const host = config.host;
+const port = config.port;
+const database = createDatabase(config.databaseUrl);
+await assertDatabaseReady(database.db);
+const auth = createAuthService(database.db, config);
 
-if (!Number.isInteger(port) || port < 0 || port > 65535) {
-  console.error(`Invalid PORT: ${process.env.PORT}`);
-  process.exit(1);
-}
-
-fs.mkdirSync(draftsDir, { recursive: true });
-fs.mkdirSync(projectsDir, { recursive: true });
-
-const drafts = new DraftStore({ rootDir: draftsDir });
-const projects = new ProjectStore({ rootDir: projectsDir, drafts });
+fs.mkdirSync(config.workspacesDir, { recursive: true });
+const objects = new S3ObjectStore(config.s3);
+await objects.assertReady();
+const workspaces = new WorkspaceManager({ rootDir: config.workspacesDir, objects });
+const projects = new DatabaseProjectStore(database.db);
+const drafts = new PersistentDraftStore({
+  rootDir: config.workspacesDir,
+  database: database.db,
+  sql: database.client,
+  workspaces,
+  access: projects,
+});
 const { app, previewManager } = createApiApp({
+  auth,
   provider: createPiHarnessProvider(),
   drafts,
   projects,
+  readiness: async () => {
+    await assertDatabaseReady(database.db);
+    await objects.assertReady();
+  },
 });
 const server = serve({
   fetch: app.fetch,
@@ -39,8 +55,7 @@ const server = serve({
   port,
 }, (address) => {
   console.log(`draftly is running at http://${host}:${address.port}`);
-  console.log(`Drafts directory: ${draftsDir}`);
-  console.log(`Projects directory: ${projectsDir}`);
+  console.log(`Workspace cache: ${config.workspacesDir}`);
   console.log(`Pi harness: ${process.env.DRAFTLY_PI_COMMAND || 'pi'}${process.env.DRAFTLY_PI_MODEL ? ` (${process.env.DRAFTLY_PI_MODEL})` : ''}`);
 }) as Server;
 
@@ -60,6 +75,8 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   closing = true;
   console.log(`\n${signal} received, shutting down...`);
   await previewManager.shutdown();
+  await workspaces.cleanup();
+  await database.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5_000).unref();
 }

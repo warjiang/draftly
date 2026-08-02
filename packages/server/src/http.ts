@@ -7,6 +7,7 @@ import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
 import { defaultDesignMd, parseDesignMd, validateDesignMd } from '../../shared/src/design-md.js';
+import type { AuthService, AuthSession } from './auth.js';
 import {
   editDraftByImage,
   editDraftSource,
@@ -15,6 +16,7 @@ import {
 } from './draft-generate.js';
 import type { DraftStore } from './drafts.js';
 import { ProjectStore } from './projects.js';
+import { withRequestAuth } from './request-context.js';
 import { extractDesign, fetchSiteAssets } from './extract.js';
 import { PreviewManager } from './preview-manager.js';
 import { assertNoEscapingSymlinks } from './source-locator.js';
@@ -28,6 +30,7 @@ import type {
   SourceLocator,
   WorkspaceProvider,
 } from './types.js';
+import type { ProjectRole } from './db/schema.js';
 import { errorWithStatus } from './types.js';
 
 const EDITOR_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../editor/dist');
@@ -38,19 +41,48 @@ type JsonObject = Record<string, unknown>;
 type Operation<T> = (onProgress?: ProgressHandler) => Promise<T>;
 
 export type ApiAppOptions = {
+  auth: AuthService;
   provider?: WorkspaceProvider;
   editorDir?: string;
   drafts: DraftStore;
-  projects?: ProjectStore;
+  projects?: ProjectStoreLike;
   previewManager?: PreviewManagerLike;
+  readiness?: () => Promise<void>;
 };
 
+export interface ProjectStoreLike {
+  list(): Promise<ProjectMeta[]>;
+  meta(id: unknown): Promise<ProjectMeta>;
+  create(options: { prompt: string; design?: ProjectDesign }): Promise<ProjectMeta>;
+  addDrafts(id: unknown, draftIds: string[]): Promise<ProjectMeta>;
+  update(id: unknown, changes: { title?: string; activeDraftId?: string }): Promise<ProjectMeta>;
+  touchByDraft(draftId: string): Promise<void>;
+  remove(id: unknown): Promise<void>;
+}
+
+interface CollaborationStore extends ProjectStoreLike {
+  members(projectId: string): Promise<unknown>;
+  invite(projectId: string, githubLogin: string, role: ProjectRole): Promise<unknown>;
+  pendingInvitations(): Promise<unknown>;
+  respondToInvitation(id: string, response: 'accepted' | 'declined'): Promise<unknown>;
+  updateMember(projectId: string, userId: string, role: ProjectRole): Promise<unknown>;
+  removeMember(projectId: string, userId: string): Promise<void>;
+  revokeInvitation(projectId: string, invitationId: string): Promise<void>;
+}
+
 export type ApiAppBundle = {
-  app: Hono;
+  app: Hono<AppEnv>;
   previewManager: PreviewManagerLike;
 };
 
+type AppEnv = {
+  Variables: {
+    auth: AuthSession;
+  };
+};
+
 export function createApiApp({
+  auth,
   provider,
   editorDir = EDITOR_DIR,
   drafts,
@@ -59,16 +91,100 @@ export function createApiApp({
     drafts,
   }),
   previewManager,
+  readiness,
 }: ApiAppOptions): ApiAppBundle {
   if (!drafts) throw new Error('createApiApp: drafts store required');
+  if (!auth) throw new Error('createApiApp: auth service required');
 
   const previews = previewManager ?? new PreviewManager({ drafts });
-  const app = new Hono();
+  const app = new Hono<AppEnv>();
 
   app.use('/api/*', bodyLimit({
     maxSize: MAX_BODY_SIZE,
     onError: (c) => json(c, { error: 'body too large' }, 413),
   }));
+
+  app.get('/api/health/live', (c) => json(c, { status: 'ok' }));
+  app.get('/api/health/ready', async (c) => {
+    if (!readiness) return json(c, { status: 'ok' });
+    try {
+      await readiness();
+      return json(c, { status: 'ok' });
+    } catch {
+      return json(c, { status: 'unavailable' }, 503);
+    }
+  });
+
+  app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+
+  app.use('/api/*', async (c, next) => {
+    if (
+      c.req.path.startsWith('/api/auth/')
+      || c.req.path === '/api/health/live'
+      || c.req.path === '/api/health/ready'
+      || c.req.path === '/api/templates'
+      || c.req.path.startsWith('/api/templates/')
+    ) {
+      await next();
+      return;
+    }
+    const session = await auth.getSession(c.req.raw.headers);
+    if (!session) return json(c, { error: 'authentication required' }, 401);
+    c.set('auth', session);
+    await withRequestAuth(session, next);
+  });
+
+  app.get('/api/me', (c) => json(c, { user: c.get('auth').user }));
+
+  app.get('/api/invitations', async (c) =>
+    json(c, { invitations: await collaboration(projects).pendingInvitations() }));
+
+  app.post('/api/invitations/:id/accept', async (c) =>
+    json(c, await collaboration(projects).respondToInvitation(c.req.param('id'), 'accepted')));
+
+  app.post('/api/invitations/:id/decline', async (c) =>
+    json(c, await collaboration(projects).respondToInvitation(c.req.param('id'), 'declined')));
+
+  app.get('/api/projects/:id/members', async (c) =>
+    json(c, await collaboration(projects).members(c.req.param('id'))));
+
+  app.post('/api/projects/:id/invitations', async (c) => {
+    const input = await readJson<{ githubLogin?: string; role?: ProjectRole }>(c);
+    if (!input.githubLogin) return json(c, { error: 'githubLogin required' }, 400);
+    if (!input.role) return json(c, { error: 'role required' }, 400);
+    return json(c, {
+      invitation: await collaboration(projects).invite(
+        c.req.param('id'),
+        input.githubLogin,
+        input.role,
+      ),
+    }, 201);
+  });
+
+  app.patch('/api/projects/:id/members/:userId', async (c) => {
+    const input = await readJson<{ role?: ProjectRole }>(c);
+    if (!input.role) return json(c, { error: 'role required' }, 400);
+    return json(c, {
+      member: await collaboration(projects).updateMember(
+        c.req.param('id'),
+        c.req.param('userId'),
+        input.role,
+      ),
+    });
+  });
+
+  app.delete('/api/projects/:id/members/:userId', async (c) => {
+    await collaboration(projects).removeMember(c.req.param('id'), c.req.param('userId'));
+    return new Response(null, { status: 204 });
+  });
+
+  app.delete('/api/projects/:id/invitations/:invitationId', async (c) => {
+    await collaboration(projects).revokeInvitation(
+      c.req.param('id'),
+      c.req.param('invitationId'),
+    );
+    return new Response(null, { status: 204 });
+  });
 
   app.post('/api/drafts/generate', async (c) => {
     const input = await readJson<{
@@ -106,6 +222,7 @@ export function createApiApp({
           prompt: input.prompt!,
           variants: input.variants,
           designMd: design.content,
+          projectId: project.id,
           onProgress,
         });
         const saved = await projects.addDrafts(project.id, generated.drafts.map((draft) => draft.id));
@@ -197,6 +314,7 @@ export function createApiApp({
           prompt: input.prompt!,
           variants: input.variants,
           designMd: design.content,
+          projectId: project.id,
           onProgress,
         });
         const saved = await projects.addDrafts(project.id, generated.drafts.map((draft) => draft.id));
@@ -257,8 +375,37 @@ export function createApiApp({
     });
   });
 
-  app.post('/api/drafts/:id/preview', async (c) =>
-    json(c, await previews.ensure(c.req.param('id'))));
+  app.post('/api/drafts/:id/preview', async (c) => {
+    const id = c.req.param('id');
+    const preview = await previews.ensure(id);
+    return json(c, {
+      ...preview,
+      url: new URL(`/api/previews/${encodeURIComponent(id)}/`, c.req.url).toString(),
+    });
+  });
+
+  app.all('/api/previews/:id/*', async (c) => {
+    const id = c.req.param('id');
+    await drafts.meta(id);
+    const preview = await previews.ensure(id);
+    const target = new URL(`${c.req.path}${new URL(c.req.url).search}`, preview.url);
+    const headers = new Headers(c.req.raw.headers);
+    headers.delete('host');
+    headers.delete('cookie');
+    const response = await fetch(target, {
+      method: c.req.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
+      redirect: 'manual',
+    });
+    const responseHeaders = new Headers(response.headers);
+    responseHeaders.delete('content-security-policy');
+    responseHeaders.set('Cache-Control', 'no-store');
+    return new Response(response.body, {
+      status: response.status,
+      headers: responseHeaders,
+    });
+  });
 
   app.post('/api/drafts/:id/iterate', async (c) => {
     const input = await readJson<{ instruction?: string }>(c);
@@ -433,10 +580,16 @@ function projectSummary(project: ProjectMeta) {
     variantCount: project.draftIds.length,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
+    role: project.role,
   };
 }
 
-async function readJson<T extends JsonObject>(c: Context): Promise<T> {
+function collaboration(projects: ProjectStoreLike): CollaborationStore {
+  if ('pendingInvitations' in projects) return projects as CollaborationStore;
+  throw Object.assign(new Error('collaboration store unavailable'), { status: 501 });
+}
+
+async function readJson<T extends JsonObject>(c: Context<AppEnv>): Promise<T> {
   const body = await c.req.text();
   if (!body) return {} as T;
   try {
@@ -452,11 +605,11 @@ async function readJson<T extends JsonObject>(c: Context): Promise<T> {
   }
 }
 
-function isStreaming(c: Context): boolean {
+function isStreaming(c: Context<AppEnv>): boolean {
   return c.req.query('stream') === '1';
 }
 
-function json(c: Context, value: unknown, status = 200): Response {
+function json(c: Context<AppEnv>, value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
     status,
     headers: {
@@ -467,7 +620,7 @@ function json(c: Context, value: unknown, status = 200): Response {
 }
 
 async function sendOperation<T>(
-  c: Context,
+  c: Context<AppEnv>,
   execute: Operation<T>,
   errorStatus = 500,
 ): Promise<Response> {
@@ -479,7 +632,7 @@ async function sendOperation<T>(
   }
 }
 
-function streamResult<T>(c: Context, execute: Operation<T>): Response {
+function streamResult<T>(c: Context<AppEnv>, execute: Operation<T>): Response {
   c.header('Content-Type', 'application/x-ndjson; charset=utf-8');
   c.header('Cache-Control', 'no-store');
   c.header('X-Content-Type-Options', 'nosniff');
@@ -501,7 +654,7 @@ function streamResult<T>(c: Context, execute: Operation<T>): Response {
   });
 }
 
-async function exportSource(c: Context, drafts: DraftStore, id: string): Promise<Response> {
+async function exportSource(c: Context<AppEnv>, drafts: DraftStore, id: string): Promise<Response> {
   const meta = await drafts.meta(id);
   const version = meta.versions.length;
   const projectDir = drafts.projectDir(id);

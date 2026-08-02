@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HomeComposer } from "@/components/home-composer";
 import { ProjectLibrary } from "@/components/project-library";
+import { AccountMenu } from "@/components/account-menu";
 import { Toaster, toast } from "@/components/ui/toast";
 import { api, apiStream } from "@/lib/api";
 import { projectPath } from "@/lib/router";
@@ -18,7 +19,7 @@ function progressLabel(event) {
   return labels[event.stage] || "正在生成可运行的视觉方案";
 }
 
-export function HomePage({ onNavigate }) {
+export function HomePage({ user, onSignOut, onNavigate }) {
   const [projects, setProjects] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [query, setQuery] = useState("");
@@ -136,7 +137,7 @@ export function HomePage({ onNavigate }) {
           <small>LOCAL PROTOTYPE STUDIO</small>
         </a>
         <p>项目优先的 AI 视觉工作区</p>
-        <span className="home-local-status"><i />本地运行</span>
+        <AccountMenu user={user} onSignOut={onSignOut} onProjectsChanged={loadHome} />
       </header>
       <main className="home-layout">
         <ProjectLibrary
