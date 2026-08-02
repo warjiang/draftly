@@ -46,21 +46,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
-      minio:
-        image: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-minio:RELEASE.2025-04-22T22-12-26Z
-        credentials:
-          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
-          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
-        env:
-          MINIO_ROOT_USER: draftly
-          MINIO_ROOT_PASSWORD: draftly-local-secret
-        ports:
-          - 9000:9000
-        options: >-
-          --health-cmd "curl -f http://127.0.0.1:9000/minio/health/live"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     env:
       DATABASE_URL: postgres://draftly:draftly@127.0.0.1:5432/draftly
       BETTER_AUTH_SECRET: integration-test-secret-at-least-32-characters
@@ -87,6 +72,21 @@ jobs:
           registry: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com
           username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+      - name: Start object storage
+        run: |
+          docker run --detach --name draftly-minio --publish 9000:9000 \
+            --env MINIO_ROOT_USER=draftly \
+            --env MINIO_ROOT_PASSWORD=draftly-local-secret \
+            crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-minio:RELEASE.2025-04-22T22-12-26Z \
+            server /data
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs draftly-minio
+          exit 1
       - name: Create object bucket
         run: >-
           docker run --rm --network host
@@ -109,6 +109,9 @@ jobs:
           done
           cat /tmp/draftly-server.log
           exit 1
+      - name: Stop object storage
+        if: always()
+        run: docker rm --force draftly-minio
 
   container:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
