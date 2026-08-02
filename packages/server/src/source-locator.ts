@@ -6,7 +6,8 @@ import type * as t from '@babel/types';
 import type { DraftStore } from './drafts.js';
 import type { ErrorWithStatus, SourceLocator } from './types.js';
 
-const traverse = traverseModule.default || traverseModule;
+const traverse = traverseModule;
+type JSXNodePath = NodePath<t.JSXElement> | NodePath<t.JSXFragment>;
 
 function contains(node: t.Node, line: number, column: number): boolean {
   if (!node.loc) return false;
@@ -61,7 +62,7 @@ export async function sourceContextForLocator({
     errorRecovery: false,
   });
   const match: {
-    selected: NodePath<t.JSXElement | t.JSXFragment> | null;
+    selected: JSXNodePath | null;
     owner: NodePath | null;
   } = { selected: null, owner: null };
   traverse(ast, {
