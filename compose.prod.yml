@@ -21,7 +21,7 @@ x-app-environment: &app-environment
 
 services:
   postgres:
-    image: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/postgres:17.6-bookworm
+    image: postgres:17.6-bookworm
     environment:
       POSTGRES_DB: draftly
       POSTGRES_USER: draftly
@@ -37,7 +37,7 @@ services:
       retries: 10
 
   minio:
-    image: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-minio:RELEASE.2025-04-22T22-12-26Z
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -53,7 +53,7 @@ services:
       retries: 10
 
   minio-init:
-    image: crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-mc:RELEASE.2025-04-16T18-13-26Z
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
     entrypoint: ["/bin/sh", "-c"]
     command:
       - mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" && mc mb --ignore-existing "local/$$S3_BUCKET"
@@ -68,7 +68,7 @@ services:
     restart: "no"
 
   migrate:
-    image: ${DRAFTLY_IMAGE:-crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/draftly}:${DRAFTLY_IMAGE_TAG:?DRAFTLY_IMAGE_TAG is required}
+    image: ${DRAFTLY_IMAGE:-ghcr.io/warjiang/draftly}:${DRAFTLY_IMAGE_TAG:?DRAFTLY_IMAGE_TAG is required}
     environment: *app-environment
     command: node packages/server/dist/db/migrate.js
     depends_on:
@@ -80,7 +80,7 @@ services:
     restart: "no"
 
   app:
-    image: ${DRAFTLY_IMAGE:-crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/draftly}:${DRAFTLY_IMAGE_TAG}
+    image: ${DRAFTLY_IMAGE:-ghcr.io/warjiang/draftly}:${DRAFTLY_IMAGE_TAG}
     init: true
     read_only: true
     environment:
