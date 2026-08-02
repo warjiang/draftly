@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Draftly weaverbird logo</title>
+  <desc id="desc">A simplified violet weaverbird with a curious eye and a blue weaving loop.</desc>
+  <g stroke="#25224B" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M672 504C821 514 894 616 855 735C808 877 587 899 409 792C330 745 276 687 244 624" fill="none" stroke-width="108"/>
+    <path d="M672 504C821 514 894 616 855 735C808 877 587 899 409 792C330 745 276 687 244 624" fill="none" stroke="#32B8F2" stroke-width="68"/>
+    <path d="M301 550C255 453 291 346 397 303C380 241 398 177 438 129C548 190 621 278 640 383C735 393 809 432 859 491L704 517C681 608 615 680 520 707C421 735 338 674 301 550Z" fill="#7151F5"/>
+    <path d="M397 303C336 286 285 245 254 188C340 184 421 213 483 267C450 275 421 287 397 303Z" fill="#FFC43D"/>
+    <path d="M301 550C239 526 191 482 163 426C249 428 324 456 383 503C347 515 320 531 301 550Z" fill="#FF654F"/>
+    <path d="M640 383C735 393 809 432 859 491L704 517L652 468Z" fill="#FFC43D"/>
+    <circle cx="569" cy="409" r="74" fill="#F6F2EA"/>
+    <circle cx="584" cy="421" r="40" fill="#25224B" stroke="none"/>
+    <circle cx="598" cy="407" r="14" fill="#F6F2EA" stroke="none"/>
+  </g>
+</svg>

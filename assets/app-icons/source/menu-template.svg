@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Draftly menu template</title>
+  <desc id="desc">A minimal line symbol of the weaverbird head, eye, beak, and weaving loop.</desc>
+  <g fill="none" stroke="#000" stroke-width="64" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M287 531C247 437 288 339 397 301C383 238 401 181 439 136C542 194 613 278 633 374C714 386 780 421 829 475L695 500C670 592 605 655 514 681C418 708 334 642 287 531Z"/>
+    <path d="M397 301C339 286 291 249 260 198C338 194 410 220 470 266"/>
+    <circle cx="563" cy="402" r="70"/>
+    <path d="M634 377L828 475L696 500"/>
+    <path d="M673 503C805 514 866 608 830 710C784 837 594 854 433 767C350 722 293 670 257 614"/>
+  </g>
+</svg>
