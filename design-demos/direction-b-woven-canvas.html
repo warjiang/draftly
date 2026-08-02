@@ -1,0 +1,1278 @@
+<!--
+  ASSUMPTIONS
+  - This prototype represents a signed-in product state; authentication and persistence are intentionally out of scope.
+  - Desktop is optimized for 1440x900. At 375x812, preview and lightweight prompting remain primary while dense editing tools collapse.
+
+  BENCHMARK DECOMPOSITION / DIRECTION LOGIC
+  - Logic 2 translates mature collaborative design-tool patterns: a canvas-first center, restrained chrome, strong panel hierarchy,
+    contextual controls, visible presence, and predictable selection states. It does not reproduce any specific product or brand.
+  - Draftly's own layer is the continuous weaving path: prompt -> generation -> variants -> running result. The path is structural,
+    appears in the creator and workspace timeline, and uses Loop blue for connection with Weaver violet for active decisions.
+  - Design read: professional collaborative creation workspace for developers and designers, bright, precise, canvas-led.
+    Dials: DESIGN_VARIANCE 5, MOTION_INTENSITY 4, VISUAL_DENSITY 7.
+
+  FORM SOURCE
+  - The home is "materials entering the nest": project history and DESIGN.md inputs feed one clear creation action.
+  - The workspace is "weaving in progress": a wide live canvas is connected to generation state, variants, conversation, and output.
+  - Controls and copy come from design-spec.md; colors, logo use, type, focus rings, and weaving semantics come from brand-spec.md.
+
+  KNOWN DEGRADATION
+  - The preview is an interactive HTML composition rather than a networked webpage or source editor.
+  - Collaboration presence, generation, export, and history controls demonstrate UI feedback only; they do not persist.
+  - On narrow screens the right inspector becomes a switchable full-width region and the tool rail becomes a horizontal strip.
+-->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Draftly - Woven Canvas</title>
+  <style>
+    :root {
+      --ink: #25224b;
+      --ink-2: #55526f;
+      --ink-3: #77748d;
+      --violet: #7151f5;
+      --violet-soft: #eeeaff;
+      --blue: #168bc0;
+      --blue-logo: #32b8f2;
+      --blue-soft: #e9f7fc;
+      --coral: #ff654f;
+      --yellow: #ffc43d;
+      --paper: #f7f6fa;
+      --surface: #fdfcff;
+      --canvas: #eeedf3;
+      --line: #dedce7;
+      --line-strong: #cbc8d8;
+      --shadow: 0 12px 32px rgba(37, 34, 75, .10);
+      --r: 10px;
+      --font: "Geist Variable", Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: var(--paper);
+      color: var(--ink);
+      font: 14px/1.5 var(--font);
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button, [tabindex], textarea {
+      outline: none;
+    }
+    :focus-visible {
+      outline: 2px solid var(--violet);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(113, 81, 245, .16);
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .app-shell {
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: 56px minmax(0, 1fr);
+    }
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(190px, 1fr) auto minmax(190px, 1fr);
+      align-items: center;
+      min-width: 0;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(253, 252, 255, .96);
+      position: relative;
+      z-index: 10;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+      font-size: 15px;
+      font-weight: 720;
+      letter-spacing: -.02em;
+    }
+    .brand img { width: 31px; height: 31px; object-fit: contain; }
+    .view-switch {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #f1f0f5;
+    }
+    .view-switch button {
+      min-height: 34px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--ink-2);
+      white-space: nowrap;
+      transition: background .16s ease, color .16s ease, box-shadow .16s ease;
+    }
+    .view-switch button[aria-selected="true"] {
+      color: var(--ink);
+      background: var(--surface);
+      box-shadow: 0 1px 3px rgba(37, 34, 75, .10);
+      font-weight: 650;
+    }
+    .top-actions {
+      justify-self: end;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .presence {
+      display: flex;
+      align-items: center;
+      padding-left: 7px;
+    }
+    .avatar {
+      width: 29px;
+      height: 29px;
+      display: grid;
+      place-items: center;
+      margin-left: -7px;
+      border: 2px solid var(--surface);
+      border-radius: 50%;
+      color: var(--surface);
+      background: var(--ink);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .avatar:nth-child(2) { background: var(--violet); }
+    .live-chip {
+      min-height: 32px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 10px;
+      border: 1px solid #b9dce9;
+      border-radius: 8px;
+      color: #176a90;
+      background: var(--blue-soft);
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .live-chip::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--blue);
+    }
+    .ghost-button, .solid-button, .icon-button {
+      min-height: 36px;
+      border-radius: 8px;
+      transition: transform .14s ease, background .14s ease, border-color .14s ease;
+    }
+    .ghost-button {
+      padding: 0 12px;
+      border: 1px solid var(--line-strong);
+      background: var(--surface);
+      font-weight: 600;
+    }
+    .ghost-button:hover { background: #f3f1f8; border-color: #aaa6bf; }
+    .solid-button {
+      padding: 0 15px;
+      border: 1px solid #5d3ee7;
+      background: var(--violet);
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 2px 7px rgba(113, 81, 245, .2);
+    }
+    .solid-button:hover { background: #6042df; }
+    button:active { transform: translateY(1px); }
+    .icon-button {
+      width: 36px;
+      display: grid;
+      place-items: center;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--ink-2);
+      font-family: var(--mono);
+      font-weight: 700;
+    }
+    .icon-button:hover { background: #efedf4; border-color: var(--line); }
+
+    .view {
+      min-height: 0;
+      overflow: hidden;
+    }
+    .view[hidden] { display: none !important; }
+
+    /* Home */
+    .home {
+      display: grid;
+      grid-template-columns: 270px minmax(0, 1fr);
+      min-height: 0;
+      background: var(--surface);
+    }
+    .library {
+      min-height: 0;
+      padding: 20px 14px;
+      overflow: auto;
+      border-right: 1px solid var(--line);
+      background: #f8f7fa;
+    }
+    .library-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 6px 14px;
+    }
+    .library h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .project-list { display: grid; gap: 4px; }
+    .project {
+      width: 100%;
+      min-height: 62px;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid transparent;
+      border-radius: var(--r);
+      text-align: left;
+      background: transparent;
+    }
+    .project:hover { background: #f0eef5; }
+    .project.active { border-color: #d4cff0; background: var(--violet-soft); }
+    .project-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--violet);
+      font-weight: 750;
+    }
+    .project:nth-child(2) .project-mark { background: var(--blue); }
+    .project:nth-child(3) .project-mark { color: var(--ink); background: var(--yellow); }
+    .project strong, .project small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .project strong { font-size: 13px; }
+    .project small { color: var(--ink-3); font-size: 12px; }
+
+    .home-main {
+      min-width: 0;
+      overflow: auto;
+      position: relative;
+      background:
+        radial-gradient(circle at 82% 16%, rgba(50, 184, 242, .07), transparent 26%),
+        var(--surface);
+    }
+    .home-inner {
+      width: min(920px, calc(100% - 48px));
+      min-height: 100%;
+      margin: 0 auto;
+      padding: clamp(42px, 7vh, 74px) 0 50px;
+    }
+    .home-title {
+      max-width: 700px;
+      margin: 0;
+      font-size: clamp(32px, 4vw, 54px);
+      line-height: 1.08;
+      letter-spacing: -.055em;
+      font-weight: 740;
+    }
+    .home-subtitle {
+      max-width: 580px;
+      margin: 15px 0 28px;
+      color: var(--ink-2);
+      font-size: 16px;
+    }
+    .creator {
+      position: relative;
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .creator::before {
+      content: "";
+      position: absolute;
+      left: 33px;
+      top: 47px;
+      bottom: 57px;
+      width: 2px;
+      background: var(--blue-logo);
+      opacity: .8;
+    }
+    .creator-section {
+      position: relative;
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      gap: 0;
+      padding: 20px 22px 20px 12px;
+    }
+    .creator-section + .creator-section { border-top: 1px solid var(--line); }
+    .path-node {
+      width: 18px;
+      height: 18px;
+      display: grid;
+      place-items: center;
+      justify-self: center;
+      margin-top: 2px;
+      z-index: 1;
+      border: 4px solid var(--surface);
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 1px var(--blue);
+      color: transparent;
+    }
+    .path-node.active { background: var(--violet); box-shadow: 0 0 0 2px var(--violet), 0 0 0 5px var(--violet-soft); }
+    .section-content label, .section-label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .prompt {
+      width: 100%;
+      min-height: 88px;
+      padding: 13px 14px;
+      resize: vertical;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      background: #fbfaff;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    .prompt:focus { border-color: var(--violet); }
+    .style-options {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .style-option {
+      min-height: 74px;
+      display: grid;
+      align-content: space-between;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #fbfaff;
+      text-align: left;
+    }
+    .style-option:hover { border-color: #aaa5c1; }
+    .style-option[aria-pressed="true"] {
+      border-color: var(--violet);
+      box-shadow: inset 0 0 0 1px var(--violet);
+      background: var(--violet-soft);
+    }
+    .style-option strong { font-size: 13px; }
+    .style-option small { color: var(--ink-3); font-size: 12px; }
+    .settings-row {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .count-control { display: flex; align-items: center; gap: 8px; }
+    .count-control button {
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--surface);
+      font-size: 18px;
+    }
+    .count-value {
+      min-width: 72px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f6f4fa;
+      font-weight: 700;
+    }
+    .creator-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      border-top: 1px solid var(--line);
+      background: #faf9fc;
+    }
+    .import-note { color: var(--ink-3); font-size: 12px; }
+    .generate-button { min-height: 42px; padding: 0 18px; }
+
+    /* Workspace */
+    .workspace {
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr) 330px;
+      min-height: 0;
+      background: var(--canvas);
+    }
+    .toolrail {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 5px;
+      border-right: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .toolrail .icon-button[aria-pressed="true"] {
+      color: var(--violet);
+      border-color: #d8d2fb;
+      background: var(--violet-soft);
+    }
+    .rail-spacer { flex: 1; }
+    .workspace-center {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 48px minmax(0, 1fr) 58px;
+    }
+    .workspace-bar {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .crumbs {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 7px;
+      white-space: nowrap;
+    }
+    .crumbs strong { overflow: hidden; text-overflow: ellipsis; }
+    .crumbs span { color: var(--ink-3); }
+    .version {
+      padding: 3px 7px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f4f3f7;
+      color: var(--ink-2);
+      font: 12px var(--mono);
+    }
+    .workspace-actions { display: flex; gap: 6px; }
+    .workspace-actions .ghost-button { min-height: 34px; padding: 0 10px; }
+    .canvas-area {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      overflow: auto;
+      padding: 24px;
+      position: relative;
+      background-color: var(--canvas);
+      background-image: radial-gradient(#d3d0dc 0.7px, transparent 0.7px);
+      background-size: 15px 15px;
+    }
+    .preview-window {
+      width: min(890px, 96%);
+      aspect-ratio: 16 / 9.5;
+      min-height: 430px;
+      display: grid;
+      grid-template-rows: 38px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid #bcb8c9;
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: 0 18px 45px rgba(37, 34, 75, .15);
+      transform-origin: center;
+      transition: transform .28s cubic-bezier(.2, .8, .2, 1);
+    }
+    .browser-bar {
+      display: grid;
+      grid-template-columns: 70px minmax(130px, 1fr) 70px;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--line);
+      background: #f5f4f8;
+    }
+    .browser-controls { color: var(--ink-3); letter-spacing: 4px; font-size: 12px; }
+    .address {
+      min-width: 0;
+      padding: 4px 10px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink-2);
+      font: 11px var(--mono);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: center;
+    }
+    .sync-state { justify-self: end; color: var(--blue); font-size: 11px; font-weight: 700; }
+    .site-preview {
+      overflow: hidden;
+      background: #fbfbfd;
+      color: #171625;
+      container-type: inline-size;
+    }
+    .mini-nav {
+      height: 54px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 5%;
+      border-bottom: 1px solid #e5e4e9;
+    }
+    .mini-brand { font-size: 14px; font-weight: 780; }
+    .mini-links { display: flex; gap: 18px; color: #5d5b69; font-size: 9px; }
+    .mini-button {
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: #252436;
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+    }
+    .mini-hero {
+      min-height: 66%;
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      align-items: center;
+      gap: 4%;
+      padding: 6% 7%;
+    }
+    .mini-kicker { margin: 0 0 8px; color: #176a90; font-size: 9px; font-weight: 750; }
+    .mini-hero h2 {
+      max-width: 480px;
+      margin: 0;
+      font-size: clamp(22px, 4.3cqw, 46px);
+      line-height: 1.04;
+      letter-spacing: -.05em;
+    }
+    .mini-hero p {
+      max-width: 390px;
+      margin: 12px 0 16px;
+      color: #63616d;
+      font-size: clamp(9px, 1.3cqw, 13px);
+      line-height: 1.55;
+    }
+    .mini-cta {
+      display: inline-flex;
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: #252436;
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+    }
+    .mini-visual {
+      min-height: 220px;
+      display: grid;
+      align-content: end;
+      padding: 12%;
+      border-radius: 10px;
+      background:
+        linear-gradient(145deg, rgba(50, 184, 242, .18), transparent 48%),
+        #ececf2;
+      position: relative;
+      overflow: hidden;
+    }
+    .mini-visual::before {
+      content: "";
+      width: 68%;
+      aspect-ratio: 1;
+      position: absolute;
+      right: -8%;
+      top: -20%;
+      border: 22px solid rgba(37, 34, 75, .13);
+      border-radius: 50%;
+    }
+    .mini-code {
+      position: relative;
+      padding: 13px;
+      border-radius: 7px;
+      color: #d9d7e5;
+      background: #29283b;
+      font: 8px/1.75 var(--mono);
+      box-shadow: 0 10px 20px rgba(37, 34, 75, .15);
+    }
+    .mini-code b { color: #67ccef; }
+    .mini-proof {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      border-top: 1px solid #e5e4e9;
+      background: #e5e4e9;
+    }
+    .mini-proof div { padding: 12px 5%; background: #fbfbfd; font-size: 9px; }
+    .mini-proof strong { display: block; margin-bottom: 2px; font-size: 11px; }
+    .canvas-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 14px;
+      border-top: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .weave-progress {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex: 1;
+    }
+    .progress-item {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--ink-3);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .progress-item:not(:last-child)::after {
+      content: "";
+      width: clamp(12px, 3vw, 50px);
+      height: 2px;
+      margin: 0 5px;
+      background: var(--blue-logo);
+    }
+    .progress-item i {
+      width: 14px;
+      height: 14px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      background: var(--surface);
+      font: normal 9px var(--mono);
+    }
+    .progress-item.done, .progress-item.active { color: var(--ink); font-weight: 650; }
+    .progress-item.done i { color: #fff; border-color: var(--blue); background: var(--blue); }
+    .progress-item.active i { border: 4px solid var(--violet-soft); background: var(--violet); box-shadow: 0 0 0 1px var(--violet); }
+    .zoom { color: var(--ink-2); font: 12px var(--mono); white-space: nowrap; }
+
+    .sidepanel {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 44px minmax(0, 1fr) auto;
+      border-left: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .panel-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-tab {
+      position: relative;
+      border: 0;
+      background: transparent;
+      color: var(--ink-3);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .panel-tab[aria-selected="true"] { color: var(--ink); }
+    .panel-tab[aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: -1px;
+      height: 2px;
+      background: var(--violet);
+    }
+    .panel-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 15px;
+    }
+    .panel-view[hidden] { display: none; }
+    .message { margin-bottom: 18px; }
+    .message-head {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      color: var(--ink-3);
+      font-size: 12px;
+    }
+    .message p { margin: 0; }
+    .agent-message {
+      padding-left: 12px;
+      border-left: 2px solid var(--blue-logo);
+    }
+    .steps {
+      margin-top: 12px;
+      padding: 10px 0 0 15px;
+      border-top: 1px solid var(--line);
+    }
+    .step {
+      position: relative;
+      padding: 4px 0 9px 12px;
+      color: var(--ink-2);
+      font-size: 12px;
+    }
+    .step::before {
+      content: "✓";
+      position: absolute;
+      left: -14px;
+      color: var(--blue);
+      font-weight: 800;
+    }
+    .variant-list { display: grid; gap: 8px; }
+    .variant {
+      min-height: 70px;
+      display: grid;
+      grid-template-columns: 56px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface);
+      text-align: left;
+    }
+    .variant[aria-pressed="true"] { border-color: var(--violet); background: var(--violet-soft); }
+    .variant-thumb {
+      width: 56px;
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background:
+        linear-gradient(90deg, #29283b 0 28%, transparent 28%),
+        linear-gradient(#d7f1fb 0 40%, #f4f3f7 40%);
+    }
+    .variant:nth-child(2) .variant-thumb { background: linear-gradient(145deg, #d9f2fb 0 44%, #f7f6fa 44%); }
+    .variant:nth-child(3) .variant-thumb { background: linear-gradient(90deg, #7151f5 0 8%, #f4f3f7 8% 68%, #e3e1e9 68%); }
+    .variant strong, .variant small { display: block; }
+    .variant small { margin-top: 2px; color: var(--ink-3); }
+    .code-block {
+      padding: 12px;
+      overflow: auto;
+      border-radius: 8px;
+      color: #dedceb;
+      background: var(--ink);
+      font: 12px/1.7 var(--mono);
+      white-space: pre;
+    }
+    .composer {
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      background: #faf9fc;
+    }
+    .composer textarea {
+      width: 100%;
+      min-height: 68px;
+      max-height: 130px;
+      resize: vertical;
+      padding: 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .composer textarea:focus { border-color: var(--violet); }
+    .composer-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .select-mode {
+      min-height: 34px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface);
+      color: var(--ink-2);
+      font-size: 12px;
+    }
+    .select-mode[aria-pressed="true"] { color: var(--violet); border-color: var(--violet); background: var(--violet-soft); }
+    .mobile-panel-switch { display: none; }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      z-index: 20;
+      padding: 10px 14px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      color: var(--surface);
+      background: var(--ink);
+      box-shadow: var(--shadow);
+      transform: translate(-50%, 14px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 760px) {
+      body { overflow: auto; }
+      .app-shell { grid-template-rows: auto minmax(0, 1fr); }
+      .topbar {
+        grid-template-columns: auto 1fr;
+        grid-template-rows: 48px 44px;
+        padding: 0 12px;
+      }
+      .brand img { width: 28px; height: 28px; }
+      .view-switch { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+      .view-switch button { flex: 1; }
+      .top-actions { grid-column: 2; grid-row: 1; }
+      .top-actions .presence, .top-actions .live-chip, .top-actions .ghost-button { display: none; }
+      .view { overflow: visible; }
+      .home { display: block; }
+      .library {
+        padding: 14px 12px 10px;
+        overflow: hidden;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .library-head { padding-bottom: 8px; }
+      .project-list {
+        display: flex;
+        gap: 7px;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scroll-snap-type: x mandatory;
+      }
+      .project { min-width: 184px; min-height: 56px; scroll-snap-align: start; }
+      .home-main { overflow: visible; }
+      .home-inner { width: auto; padding: 28px 16px 32px; }
+      .home-title { font-size: 34px; letter-spacing: -.045em; }
+      .home-subtitle { margin: 12px 0 22px; font-size: 14px; }
+      .creator::before { left: 25px; top: 41px; bottom: 62px; }
+      .creator-section { grid-template-columns: 34px minmax(0, 1fr); padding: 16px 14px 16px 8px; }
+      .path-node { width: 16px; height: 16px; }
+      .style-options { grid-template-columns: 1fr; }
+      .style-option { min-height: 58px; }
+      .settings-row { align-items: stretch; }
+      .count-control { justify-content: space-between; }
+      .creator-footer { align-items: stretch; flex-direction: column; padding: 12px 14px; }
+      .generate-button { width: 100%; }
+      .import-note { text-align: center; }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 1fr;
+        grid-template-rows: 46px auto auto;
+        min-height: calc(100dvh - 92px);
+      }
+      .toolrail {
+        flex-direction: row;
+        justify-content: space-around;
+        padding: 4px 8px;
+        overflow-x: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .rail-spacer { display: none; }
+      .workspace-center {
+        grid-template-rows: 46px minmax(330px, 49vh) 52px;
+      }
+      .workspace-bar { padding: 0 9px; }
+      .workspace-actions .ghost-button { display: none; }
+      .workspace-actions .ghost-button:last-child { display: block; }
+      .canvas-area { padding: 12px 8px; overflow: hidden; }
+      .preview-window {
+        width: 100%;
+        min-height: 0;
+        aspect-ratio: 16 / 12;
+        border-radius: 9px;
+      }
+      .browser-bar { grid-template-columns: 42px 1fr 42px; padding: 0 6px; }
+      .browser-controls { letter-spacing: 1px; }
+      .mini-nav { height: 38px; }
+      .mini-links { display: none; }
+      .mini-hero { grid-template-columns: 1.15fr .85fr; padding: 5%; }
+      .mini-hero h2 { font-size: 17px; }
+      .mini-hero p { margin: 6px 0 8px; font-size: 7px; }
+      .mini-visual { min-height: 110px; padding: 8%; }
+      .mini-code { padding: 7px; font-size: 5px; }
+      .mini-proof div { padding: 6px 4%; font-size: 6px; }
+      .mini-proof strong { font-size: 8px; }
+      .canvas-footer { padding: 0 8px; }
+      .progress-item span { display: none; }
+      .progress-item:not(:last-child)::after { width: clamp(14px, 10vw, 34px); }
+      .sidepanel {
+        min-height: 340px;
+        border-top: 1px solid var(--line);
+        border-left: 0;
+      }
+      .panel-body { max-height: 310px; }
+      .mobile-panel-switch {
+        display: inline-flex;
+        min-height: 34px;
+        align-items: center;
+        padding: 0 9px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--surface);
+        font-size: 12px;
+      }
+      .toast { bottom: 12px; width: calc(100% - 32px); text-align: center; }
+    }
+
+    @media (max-width: 390px) {
+      .brand span { font-size: 14px; }
+      .home-title { font-size: 31px; }
+      .workspace-center { grid-template-rows: 46px 315px 52px; }
+      .crumbs { gap: 5px; font-size: 12px; }
+      .crumbs span:nth-of-type(2) { display: none; }
+      .zoom { font-size: 11px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <img src="../assets/app-icons/source/logo.svg" alt="Draftly 织巢鸟 Logo">
+        <span>Draftly</span>
+      </div>
+      <nav class="view-switch" aria-label="代表视图">
+        <button type="button" role="tab" aria-selected="true" aria-controls="home-view" data-view="home">项目首页</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="workspace-view" data-view="workspace">核心工作区</button>
+      </nav>
+      <div class="top-actions">
+        <div class="presence" aria-label="2 位成员在线">
+          <span class="avatar" title="姜文">姜</span>
+          <span class="avatar" title="林霁">林</span>
+        </div>
+        <span class="live-chip">2 人在线</span>
+        <button class="ghost-button" type="button" data-toast="已创建新项目草稿">新项目</button>
+        <button class="icon-button" type="button" aria-label="打开账户菜单">DW</button>
+      </div>
+    </header>
+
+    <main id="home-view" class="view home" data-page="home">
+      <aside class="library" aria-label="项目库">
+        <div class="library-head">
+          <h2>项目库</h2>
+          <button class="icon-button" type="button" aria-label="新建项目" data-toast="已创建新项目草稿">＋</button>
+        </div>
+        <div class="project-list">
+          <button class="project active" type="button">
+            <span class="project-mark">营</span>
+            <span><strong>营销站改版</strong><small>3 个方案，刚刚更新</small></span>
+          </button>
+          <button class="project" type="button">
+            <span class="project-mark">开</span>
+            <span><strong>开发者控制台</strong><small>方案 2，昨天</small></span>
+          </button>
+          <button class="project" type="button">
+            <span class="project-mark">账</span>
+            <span><strong>移动端记账</strong><small>初稿，上周五</small></span>
+          </button>
+        </div>
+      </aside>
+
+      <section class="home-main">
+        <div class="home-inner">
+          <h1 class="home-title">把想法编织成可运行的产品</h1>
+          <p class="home-subtitle">从需求和设计规范开始，生成可协作、可预览、可继续迭代的源码原型。</p>
+
+          <form class="creator" id="creator-form">
+            <div class="creator-section">
+              <span class="path-node" aria-hidden="true"></span>
+              <div class="section-content">
+                <label for="project-prompt">描述你要构建的页面</label>
+                <textarea class="prompt" id="project-prompt">为本地优先的开发工具设计一个清晰、克制的项目概览页</textarea>
+              </div>
+            </div>
+            <div class="creator-section">
+              <span class="path-node active" aria-hidden="true"></span>
+              <div class="section-content">
+                <span class="section-label">选择 DESIGN.md 基础</span>
+                <div class="style-options" role="group" aria-label="设计规范">
+                  <button class="style-option" type="button" aria-pressed="true">
+                    <strong>Vercel</strong><small>高对比，精确，开发者导向</small>
+                  </button>
+                  <button class="style-option" type="button" aria-pressed="false">
+                    <strong>Editorial</strong><small>宽松编排，内容优先</small>
+                  </button>
+                  <button class="style-option" type="button" aria-pressed="false">
+                    <strong>Brutalist</strong><small>直接结构，强边界</small>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="creator-section">
+              <span class="path-node" aria-hidden="true"></span>
+              <div class="section-content settings-row">
+                <div>
+                  <span class="section-label">生成方案数</span>
+                  <div class="count-control">
+                    <button type="button" aria-label="减少方案" data-count="-1">−</button>
+                    <output class="count-value" id="count-output" aria-live="polite">3 个方案</output>
+                    <button type="button" aria-label="增加方案" data-count="1">＋</button>
+                  </div>
+                </div>
+                <button class="ghost-button" type="button" data-toast="请选择本地 DESIGN.md 文件">导入设计规范</button>
+              </div>
+            </div>
+            <div class="creator-footer">
+              <span class="import-note">输入、规范与方案将保留在项目中</span>
+              <button class="solid-button generate-button" type="submit">生成 3 个方案</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <main id="workspace-view" class="view workspace" data-page="workspace" hidden>
+      <aside class="toolrail" aria-label="工作区工具">
+        <button class="icon-button" type="button" aria-label="移动画布" title="移动画布">H</button>
+        <button class="icon-button" type="button" aria-label="点选修改" title="点选修改" aria-pressed="true">S</button>
+        <button class="icon-button" type="button" aria-label="添加批注" title="添加批注">C</button>
+        <button class="icon-button" type="button" aria-label="查看源码" title="查看源码" data-open-panel="code">&lt;/&gt;</button>
+        <span class="rail-spacer"></span>
+        <button class="icon-button" type="button" aria-label="版本历史" title="版本历史" data-toast="版本历史已打开">V4</button>
+        <button class="icon-button" type="button" aria-label="帮助" title="帮助">?</button>
+      </aside>
+
+      <section class="workspace-center">
+        <header class="workspace-bar">
+          <div class="crumbs" aria-label="项目路径">
+            <strong>本地优先开发工具</strong><span>/</span><span>方案 2</span><span>/</span><span class="version">v4</span>
+          </div>
+          <div class="workspace-actions">
+            <button class="ghost-button" type="button" data-toast="版本历史已打开">版本历史</button>
+            <button class="ghost-button" type="button" data-open-panel="code">源码</button>
+            <button class="solid-button" type="button" data-toast="导出准备完成">导出</button>
+          </div>
+        </header>
+
+        <div class="canvas-area" aria-label="实时预览画布">
+          <article class="preview-window">
+            <div class="browser-bar">
+              <span class="browser-controls" aria-hidden="true">‹ › ↻</span>
+              <span class="address">draftly.local/preview/project-overview</span>
+              <span class="sync-state">实时</span>
+            </div>
+            <div class="site-preview">
+              <nav class="mini-nav" aria-label="预览页面导航">
+                <span class="mini-brand">Localbase</span>
+                <span class="mini-links"><span>产品</span><span>文档</span><span>更新</span></span>
+                <span class="mini-button">开始使用</span>
+              </nav>
+              <section class="mini-hero">
+                <div>
+                  <p class="mini-kicker">数据留在你的设备</p>
+                  <h2>项目状态，一眼清楚</h2>
+                  <p>在一个本地优先的工作区中查看分支、任务与同步状态，不打断开发节奏。</p>
+                  <span class="mini-cta">创建本地项目</span>
+                </div>
+                <div class="mini-visual">
+                  <div class="mini-code"><b>localbase</b> status<br>workspace&nbsp; ready<br>branch&nbsp;&nbsp;&nbsp;&nbsp; main<br>sync&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; local</div>
+                </div>
+              </section>
+              <section class="mini-proof" aria-label="产品特点">
+                <div><strong>本地存储</strong>离线时继续工作</div>
+                <div><strong>清楚同步</strong>每次变化可追溯</div>
+                <div><strong>开放源码</strong>随时检查与导出</div>
+              </section>
+            </div>
+          </article>
+        </div>
+
+        <footer class="canvas-footer">
+          <div class="weave-progress" aria-label="生成进度">
+            <span class="progress-item done"><i>✓</i><span>需求</span></span>
+            <span class="progress-item done"><i>✓</i><span>生成</span></span>
+            <span class="progress-item done"><i>✓</i><span>方案</span></span>
+            <span class="progress-item active"><i></i><span>结果</span></span>
+          </div>
+          <span class="zoom">74%</span>
+          <button class="mobile-panel-switch" type="button" data-jump-panel>打开对话</button>
+        </footer>
+      </section>
+
+      <aside class="sidepanel" id="sidepanel" aria-label="设计面板">
+        <div class="panel-tabs" role="tablist" aria-label="设计面板">
+          <button class="panel-tab" type="button" role="tab" aria-selected="true" data-panel="chat">对话</button>
+          <button class="panel-tab" type="button" role="tab" aria-selected="false" data-panel="variants">方案</button>
+          <button class="panel-tab" type="button" role="tab" aria-selected="false" data-panel="code">源码</button>
+        </div>
+        <div class="panel-body">
+          <section class="panel-view" data-panel-view="chat">
+            <div class="message">
+              <div class="message-head"><strong>你</strong><span>14:18</span></div>
+              <p>首页需要更克制。让项目状态更清楚，并突出本地优先。</p>
+            </div>
+            <div class="message agent-message">
+              <div class="message-head"><strong>Draftly</strong><span>已完成</span></div>
+              <p>已重组首屏层级，收紧导航，并将本地状态移到主要视觉区域。</p>
+              <div class="steps" aria-label="生成步骤">
+                <div class="step">分析 DESIGN.md 与页面结构</div>
+                <div class="step">生成三个布局方向</div>
+                <div class="step">运行预览并检查响应式</div>
+              </div>
+            </div>
+          </section>
+          <section class="panel-view" data-panel-view="variants" hidden>
+            <div class="variant-list">
+              <button class="variant" type="button" aria-pressed="false">
+                <span class="variant-thumb"></span><span><strong>方案 1</strong><small>深色侧栏，紧凑信息</small></span>
+              </button>
+              <button class="variant" type="button" aria-pressed="true">
+                <span class="variant-thumb"></span><span><strong>方案 2</strong><small>明亮画布，预览优先</small></span>
+              </button>
+              <button class="variant" type="button" aria-pressed="false">
+                <span class="variant-thumb"></span><span><strong>方案 3</strong><small>模块导航，源码优先</small></span>
+              </button>
+            </div>
+          </section>
+          <section class="panel-view" data-panel-view="code" hidden>
+            <pre class="code-block" aria-label="源码预览">&lt;main class="overview"&gt;
+  &lt;section class="hero"&gt;
+    &lt;h1&gt;项目状态，一眼清楚&lt;/h1&gt;
+    &lt;p&gt;数据留在你的设备&lt;/p&gt;
+  &lt;/section&gt;
+&lt;/main&gt;</pre>
+          </section>
+        </div>
+        <div class="composer">
+          <label class="sr-only" for="iteration-prompt">继续描述修改</label>
+          <textarea id="iteration-prompt" placeholder="继续描述修改，或点选预览中的元素"></textarea>
+          <div class="composer-actions">
+            <button class="select-mode" type="button" aria-pressed="true">点选修改</button>
+            <button class="solid-button" type="button" data-send>发送</button>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <div class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const viewButtons = [...document.querySelectorAll("[data-view]")];
+      const views = [...document.querySelectorAll("[data-page]")];
+      const toast = document.querySelector(".toast");
+      let toastTimer;
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("show"), 1800);
+      }
+
+      function setView(name) {
+        viewButtons.forEach(button => button.setAttribute("aria-selected", String(button.dataset.view === name)));
+        views.forEach(view => { view.hidden = view.dataset.page !== name; });
+        document.title = name === "home" ? "Draftly - 项目首页" : "Draftly - 核心工作区";
+      }
+
+      viewButtons.forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
+      const initialView = new URLSearchParams(window.location.search).get("view");
+      if (initialView === "home" || initialView === "workspace") setView(initialView);
+
+      const styleButtons = [...document.querySelectorAll(".style-option")];
+      styleButtons.forEach(button => button.addEventListener("click", () => {
+        styleButtons.forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+      }));
+
+      let count = 3;
+      const countOutput = document.querySelector("#count-output");
+      const generateButton = document.querySelector(".generate-button");
+      document.querySelectorAll("[data-count]").forEach(button => button.addEventListener("click", () => {
+        count = Math.max(1, Math.min(5, count + Number(button.dataset.count)));
+        countOutput.textContent = `${count} 个方案`;
+        generateButton.textContent = `生成 ${count} 个方案`;
+      }));
+
+      document.querySelector("#creator-form").addEventListener("submit", event => {
+        event.preventDefault();
+        showToast("项目已创建，正在编织方案");
+        setTimeout(() => setView("workspace"), 420);
+      });
+
+      const panelTabs = [...document.querySelectorAll("[data-panel]")];
+      const panelViews = [...document.querySelectorAll("[data-panel-view]")];
+      function setPanel(name) {
+        panelTabs.forEach(tab => tab.setAttribute("aria-selected", String(tab.dataset.panel === name)));
+        panelViews.forEach(panel => { panel.hidden = panel.dataset.panelView !== name; });
+      }
+      panelTabs.forEach(tab => tab.addEventListener("click", () => setPanel(tab.dataset.panel)));
+      document.querySelectorAll("[data-open-panel]").forEach(button => button.addEventListener("click", () => {
+        setPanel(button.dataset.openPanel);
+        document.querySelector("#sidepanel").scrollIntoView({ behavior: "smooth", block: "start" });
+      }));
+
+      const variants = [...document.querySelectorAll(".variant")];
+      variants.forEach(button => button.addEventListener("click", () => {
+        variants.forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+        showToast(`${button.querySelector("strong").textContent} 已载入预览`);
+      }));
+
+      const selectMode = document.querySelector(".select-mode");
+      selectMode.addEventListener("click", () => {
+        const next = selectMode.getAttribute("aria-pressed") !== "true";
+        selectMode.setAttribute("aria-pressed", String(next));
+        showToast(next ? "点选修改已开启" : "点选修改已关闭");
+      });
+
+      document.querySelector("[data-send]").addEventListener("click", () => {
+        const input = document.querySelector("#iteration-prompt");
+        if (!input.value.trim()) {
+          input.focus();
+          showToast("请先描述要修改的内容");
+          return;
+        }
+        showToast("修改请求已加入生成队列");
+        input.value = "";
+      });
+
+      document.querySelector("[data-jump-panel]").addEventListener("click", () => {
+        document.querySelector("#sidepanel").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+
+      document.querySelectorAll("[data-toast]").forEach(button => {
+        button.addEventListener("click", () => showToast(button.dataset.toast));
+      });
+
+      document.addEventListener("keydown", event => {
+        if (event.altKey && event.key === "1") setView("home");
+        if (event.altKey && event.key === "2") setView("workspace");
+        if (event.key === "Escape") toast.classList.remove("show");
+      });
+    })();
+  </script>
+</body>
+</html>

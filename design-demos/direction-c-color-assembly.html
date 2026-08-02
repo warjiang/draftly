@@ -1,0 +1,1578 @@
+<!doctype html>
+<!--
+  ASSUMPTIONS
+  - This is a visual prototype. Controls demonstrate selection, view switching, version switching, and message submission without a backend.
+  - Desktop is composed for 1440 x 900. Mobile is composed for 375 x 812 and prioritizes project review and lightweight prompting.
+
+  STUDIO PHILOSOPHY
+  - Logic 3: treat the weaverbird as a complete technology identity, not a mascot. Its loop becomes continuity, its feathers become structural strips, and its compact body becomes dense editorial hierarchy.
+  - Color is functional: violet marks action and selection, blue marks live connection, yellow and coral appear only as brief material cues.
+
+  FORM SOURCE
+  - Home is the point where materials enter the nest: project history, brief, DESIGN.md, and output count converge into one asymmetric assembly.
+  - Workspace is weaving in progress: the preview owns the stage, while versions, tools, process, and conversation orbit it as rails and trays rather than a standard two-column shell.
+
+  DEGRADATION NOTES
+  - No external dependencies are used. The Geist-like stack falls back to system sans fonts.
+  - The real logo is referenced from ../assets/app-icons/source/logo.svg.
+  - Without JavaScript, both views remain in the document; the home view is visible first and form controls retain native behavior.
+  - Motion is limited to state transitions and is removed under prefers-reduced-motion.
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8f7fb">
+  <title>Draftly - Color Assembly</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #25224b;
+      --ink-2: #4d496d;
+      --ink-3: #706d87;
+      --violet: #7151f5;
+      --violet-dark: #5435d3;
+      --violet-pale: #eeeafe;
+      --blue: #168dc0;
+      --blue-bright: #32b8f2;
+      --blue-pale: #e4f6fc;
+      --yellow: #ffc43d;
+      --coral: #ff654f;
+      --paper: #f8f7fb;
+      --surface: #fdfcff;
+      --surface-2: #f1eff6;
+      --line: #dcd9e7;
+      --line-strong: #bdb8d0;
+      --success: #157d6d;
+      --danger: #c33b2c;
+      --shadow: 0 18px 55px rgba(37, 34, 75, .12);
+      --radius: 12px;
+      --ease: cubic-bezier(.2, .8, .2, 1);
+      --font: "Geist Variable", Geist, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--paper); }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100dvh;
+      overflow-x: hidden;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, transparent 0 8.4%, rgba(113, 81, 245, .045) 8.4% 8.48%, transparent 8.48%),
+        var(--paper);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input, textarea { font: inherit; }
+
+    button, [role="button"] {
+      min-height: 38px;
+      color: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      border: 0;
+    }
+
+    button:active { transform: translateY(1px); }
+
+    :focus-visible {
+      outline: 2px solid var(--violet);
+      outline-offset: 3px;
+      box-shadow: 0 0 0 5px rgba(113, 81, 245, .16);
+    }
+
+    ::selection { background: var(--yellow); color: var(--ink); }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .app-topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(190px, 1fr) auto minmax(190px, 1fr);
+      align-items: center;
+      height: 68px;
+      padding: 0 28px;
+      border-bottom: 1px solid rgba(37, 34, 75, .13);
+      background: rgba(248, 247, 251, .94);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      width: max-content;
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 730;
+      letter-spacing: -.02em;
+      text-decoration: none;
+    }
+
+    .brand img {
+      width: 35px;
+      height: 35px;
+      object-fit: contain;
+    }
+
+    .view-switcher {
+      display: inline-grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface-2);
+    }
+
+    .view-switcher button {
+      min-width: 106px;
+      padding: 7px 13px;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--ink-2);
+      font-size: 13px;
+      font-weight: 650;
+      transition: background .2s var(--ease), color .2s var(--ease);
+    }
+
+    .view-switcher button[aria-selected="true"] {
+      color: var(--ink);
+      background: var(--surface);
+      box-shadow: 0 1px 5px rgba(37, 34, 75, .09);
+    }
+
+    .account {
+      justify-self: end;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .avatar {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid rgba(37, 34, 75, .22);
+      border-radius: 50%;
+      background: var(--ink);
+      color: #f8f7fb;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .account-name { font-size: 13px; font-weight: 620; }
+
+    .view { display: none; }
+    .view.is-active { display: block; animation: view-in .38s var(--ease) both; }
+
+    @keyframes view-in {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    /* Home: a material assembly, intentionally not a conventional hero and sidebar. */
+    .home-shell {
+      display: grid;
+      grid-template-columns: minmax(220px, 20vw) minmax(0, 1fr);
+      min-height: calc(100dvh - 68px);
+    }
+
+    .project-index {
+      position: relative;
+      display: flex;
+      min-height: calc(100dvh - 68px);
+      flex-direction: column;
+      padding: 38px 22px 24px 28px;
+      border-right: 1px solid var(--line);
+      background: rgba(241, 239, 246, .68);
+    }
+
+    .section-label {
+      margin: 0 0 24px;
+      color: var(--ink-3);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .project-list { display: grid; gap: 5px; }
+
+    .project-item {
+      position: relative;
+      display: grid;
+      grid-template-columns: 5px 1fr;
+      gap: 13px;
+      min-height: 70px;
+      padding: 11px 10px 11px 0;
+      border-radius: var(--radius);
+      background: transparent;
+      text-align: left;
+      transition: background .2s var(--ease), transform .2s var(--ease);
+    }
+
+    .project-item:hover {
+      background: rgba(255, 255, 255, .68);
+      transform: translateX(3px);
+    }
+
+    .project-item .strip {
+      border-radius: 2px;
+      background: var(--line-strong);
+    }
+
+    .project-item:nth-child(1) .strip { background: var(--violet); }
+    .project-item:nth-child(2) .strip { background: var(--blue-bright); }
+    .project-item:nth-child(3) .strip { background: var(--coral); }
+
+    .project-title {
+      display: block;
+      margin: 1px 0 3px;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 680;
+    }
+
+    .project-meta { color: var(--ink-3); font-size: 12px; }
+
+    .new-project {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      margin-top: auto;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      background: transparent;
+      color: var(--ink);
+      font-weight: 680;
+    }
+
+    .new-project:hover { background: var(--surface); }
+
+    .assembly-stage {
+      position: relative;
+      overflow: hidden;
+      min-height: calc(100dvh - 68px);
+      padding: clamp(38px, 5vw, 76px) clamp(28px, 6vw, 92px) 46px;
+    }
+
+    .assembly-stage::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 7vw;
+      width: 11px;
+      height: 14vh;
+      background: var(--blue-bright);
+      box-shadow: 15px 28px 0 var(--violet), 30px 8px 0 var(--yellow), 45px 45px 0 var(--coral);
+      opacity: .92;
+    }
+
+    .home-heading {
+      position: relative;
+      z-index: 1;
+      max-width: 790px;
+      margin: 0 0 46px;
+      color: var(--ink);
+      font-size: clamp(42px, 5.4vw, 78px);
+      font-weight: 760;
+      letter-spacing: -.055em;
+      line-height: .98;
+    }
+
+    .home-heading .material {
+      display: inline-block;
+      color: var(--violet);
+    }
+
+    .creator {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(245px, .75fr);
+      width: min(100%, 980px);
+      margin-left: clamp(0px, 7vw, 105px);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .creator::before {
+      content: "";
+      position: absolute;
+      top: -1px;
+      left: -17px;
+      width: 9px;
+      height: 63%;
+      border-radius: 3px 0 0 3px;
+      background: var(--violet);
+      box-shadow: 0 calc(63% + 8px) 0 var(--blue-bright);
+    }
+
+    .brief-column {
+      display: flex;
+      min-height: 405px;
+      flex-direction: column;
+      padding: 28px 30px 24px;
+    }
+
+    .creator-kicker {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      color: var(--ink-3);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .live-path {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--blue);
+      font-weight: 650;
+    }
+
+    .live-path::before {
+      content: "";
+      width: 21px;
+      height: 7px;
+      border-top: 2px solid var(--blue-bright);
+      border-right: 2px solid var(--blue-bright);
+      border-radius: 0 8px 0 0;
+    }
+
+    .brief-label {
+      margin-bottom: 9px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .brief-input {
+      width: 100%;
+      min-height: 142px;
+      resize: vertical;
+      border: 0;
+      border-radius: 8px;
+      outline: 0;
+      background: transparent;
+      color: var(--ink);
+      font-size: clamp(18px, 1.55vw, 22px);
+      font-weight: 570;
+      letter-spacing: -.015em;
+      line-height: 1.55;
+    }
+
+    .brief-input::placeholder { color: #77738e; opacity: 1; }
+
+    .brief-input:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--violet), 0 0 0 4px rgba(113, 81, 245, .12);
+      padding: 10px;
+    }
+
+    .brief-helper {
+      margin: 4px 0 22px;
+      color: var(--ink-3);
+      font-size: 12px;
+    }
+
+    .creator-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: auto;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 20px;
+      border-radius: 9px;
+      background: var(--violet);
+      color: #fff;
+      font-weight: 720;
+      white-space: nowrap;
+      transition: background .2s var(--ease), transform .2s var(--ease);
+    }
+
+    .primary:hover { background: var(--violet-dark); transform: translateY(-1px); }
+
+    .secondary {
+      min-height: 44px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface);
+      color: var(--ink-2);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .secondary:hover { border-color: var(--ink-3); color: var(--ink); }
+
+    .material-column {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      padding: 25px 22px 22px;
+      border-left: 1px solid var(--line);
+      background: var(--surface-2);
+    }
+
+    .material-heading {
+      margin: 0 0 16px;
+      font-size: 14px;
+      font-weight: 730;
+    }
+
+    .design-options {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .design-option {
+      position: relative;
+      display: grid;
+      grid-template-columns: 8px 1fr auto;
+      gap: 11px;
+      align-items: center;
+      min-height: 54px;
+      padding: 9px 10px 9px 9px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      background: rgba(255, 255, 255, .66);
+      cursor: pointer;
+    }
+
+    .design-option:hover { border-color: var(--line-strong); }
+
+    .design-option:has(input:checked) {
+      border-color: var(--violet);
+      background: var(--surface);
+      box-shadow: 0 0 0 3px rgba(113, 81, 245, .1);
+    }
+
+    .design-option input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .design-swatch {
+      align-self: stretch;
+      border-radius: 2px;
+      background: var(--ink);
+    }
+
+    .design-option:nth-child(2) .design-swatch { background: var(--blue-bright); }
+    .design-option:nth-child(3) .design-swatch { background: var(--coral); }
+
+    .design-name { font-weight: 680; }
+    .design-note { color: var(--ink-3); font-size: 12px; }
+
+    .checkmark {
+      display: grid;
+      width: 19px;
+      height: 19px;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      color: transparent;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .design-option:has(input:checked) .checkmark {
+      border-color: var(--violet);
+      background: var(--violet);
+      color: #fff;
+    }
+
+    .count-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 22px;
+      padding-top: 17px;
+      border-top: 1px solid var(--line);
+    }
+
+    .stepper {
+      display: grid;
+      grid-template-columns: 36px 40px 36px;
+      align-items: center;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      background: var(--surface);
+    }
+
+    .stepper button {
+      min-height: 36px;
+      background: transparent;
+      color: var(--ink);
+      font-size: 18px;
+    }
+
+    .stepper button:hover { background: var(--violet-pale); }
+    .stepper output { text-align: center; font-family: var(--mono); font-weight: 700; }
+
+    .material-foot {
+      margin-top: auto;
+      padding-top: 20px;
+      color: var(--ink-3);
+      font-size: 12px;
+    }
+
+    /* Workspace: canvas stage with orbital rails and trays. */
+    .workspace {
+      min-height: calc(100dvh - 68px);
+      background: var(--surface-2);
+    }
+
+    .workspace-ribbon {
+      display: grid;
+      grid-template-columns: minmax(235px, 1fr) auto minmax(235px, 1fr);
+      align-items: center;
+      min-height: 62px;
+      padding: 8px 22px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .crumbs {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 8px;
+      font-weight: 690;
+    }
+
+    .crumbs span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .crumb-sep { color: var(--line-strong); font-weight: 400; }
+
+    .version-cluster {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface-2);
+    }
+
+    .version-cluster button {
+      min-height: 32px;
+      padding: 0 12px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink-3);
+      font-size: 12px;
+      font-weight: 670;
+    }
+
+    .version-cluster button[aria-pressed="true"] {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .collab {
+      justify-self: end;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .collab-label { color: var(--ink-3); font-size: 12px; }
+
+    .mini-avatar {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      margin-left: -4px;
+      border: 2px solid var(--surface);
+      border-radius: 50%;
+      background: var(--blue-pale);
+      color: var(--blue);
+      font-size: 11px;
+      font-weight: 750;
+    }
+
+    .workspace-stage {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr);
+      min-height: calc(100dvh - 130px);
+    }
+
+    .tool-spine {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      padding: 14px 9px;
+      border-right: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .tool-button {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      min-height: 40px;
+      place-items: center;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--ink-3);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .tool-button:hover { background: var(--surface-2); color: var(--ink); }
+    .tool-button[aria-pressed="true"] { background: var(--violet-pale); color: var(--violet-dark); }
+    .tool-button.is-last { margin-top: auto; }
+
+    .stage-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 322px;
+      grid-template-rows: minmax(510px, 1fr) auto;
+      min-height: 0;
+    }
+
+    .canvas-zone {
+      position: relative;
+      display: grid;
+      min-width: 0;
+      min-height: 0;
+      place-items: center;
+      overflow: hidden;
+      padding: 34px 38px 28px;
+      background:
+        radial-gradient(circle, rgba(37, 34, 75, .13) 1px, transparent 1.1px) 0 0 / 22px 22px,
+        #e9e7ef;
+    }
+
+    .canvas-zone::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 7px;
+      height: 38%;
+      background: var(--blue-bright);
+      box-shadow: 0 38vh 0 var(--violet);
+    }
+
+    .browser-frame {
+      width: min(100%, 900px);
+      overflow: hidden;
+      border: 1px solid #b7b2c9;
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: 0 22px 55px rgba(37, 34, 75, .17);
+    }
+
+    .browser-bar {
+      display: grid;
+      grid-template-columns: 82px minmax(180px, 1fr) 118px;
+      align-items: center;
+      gap: 13px;
+      height: 48px;
+      padding: 0 13px;
+      border-bottom: 1px solid var(--line);
+      background: #f8f7fa;
+    }
+
+    .window-controls { display: flex; gap: 7px; }
+    .window-controls i {
+      display: block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--line-strong);
+    }
+    .window-controls i:first-child { background: var(--coral); }
+    .window-controls i:nth-child(2) { background: var(--yellow); }
+
+    .address {
+      overflow: hidden;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface);
+      color: var(--ink-3);
+      font-family: var(--mono);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .live-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 7px;
+      color: var(--success);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .live-status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border: 2px solid var(--success);
+      border-radius: 50%;
+    }
+
+    .product-preview {
+      display: grid;
+      grid-template-columns: 112px 1fr;
+      min-height: 470px;
+      background: #fbfbfd;
+    }
+
+    .preview-nav {
+      padding: 24px 16px;
+      border-right: 1px solid #e4e2e9;
+      background: #f2f1f5;
+    }
+
+    .preview-mark {
+      width: 27px;
+      height: 27px;
+      margin-bottom: 35px;
+      border-radius: 8px 8px 8px 2px;
+      background: #28263f;
+    }
+
+    .preview-nav span {
+      display: block;
+      margin: 0 0 15px;
+      color: #8a8798;
+      font-size: 9px;
+      font-weight: 660;
+    }
+    .preview-nav span.active { color: #28263f; }
+
+    .preview-main { padding: 43px 48px; }
+    .preview-main h2 {
+      max-width: 500px;
+      margin: 0 0 14px;
+      color: #28263f;
+      font-size: clamp(26px, 3vw, 42px);
+      letter-spacing: -.04em;
+      line-height: 1.05;
+    }
+    .preview-main > p {
+      max-width: 480px;
+      margin: 0 0 32px;
+      color: #6d697c;
+      font-size: 12px;
+    }
+
+    .preview-projects {
+      display: grid;
+      grid-template-columns: 1.35fr .8fr;
+      gap: 12px;
+    }
+
+    .preview-panel {
+      min-height: 128px;
+      padding: 20px;
+      border: 1px solid #dddbe4;
+      border-radius: 10px;
+      background: #fff;
+    }
+    .preview-panel:first-child {
+      border-top: 5px solid #5a54d7;
+    }
+    .preview-panel:last-child {
+      border-top: 5px solid #32a9dc;
+    }
+    .preview-panel strong { display: block; margin-bottom: 8px; font-size: 13px; }
+    .preview-panel p { margin: 0; color: #807d8d; font-size: 10px; }
+
+    .canvas-tools {
+      position: absolute;
+      right: 18px;
+      bottom: 16px;
+      display: flex;
+      gap: 5px;
+      padding: 4px;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      background: var(--surface);
+      box-shadow: 0 6px 20px rgba(37, 34, 75, .12);
+    }
+    .canvas-tools button {
+      min-width: 38px;
+      min-height: 34px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink-2);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    .canvas-tools button:hover { background: var(--surface-2); }
+
+    .process-rail {
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+      border-left: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .process-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 55px;
+      padding: 0 19px;
+      border-bottom: 1px solid var(--line);
+    }
+    .process-head h2 { margin: 0; font-size: 14px; }
+    .process-head span { color: var(--blue); font-family: var(--mono); font-size: 11px; }
+
+    .conversation {
+      flex: 1;
+      overflow: auto;
+      padding: 18px;
+    }
+
+    .message {
+      margin: 0 0 19px;
+      padding-left: 12px;
+      border-left: 3px solid var(--line-strong);
+    }
+    .message.user { border-left-color: var(--violet); }
+    .message.agent { border-left-color: var(--blue-bright); }
+    .message-meta {
+      margin-bottom: 5px;
+      color: var(--ink-3);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .message p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.55; }
+
+    .steps {
+      margin: 22px 0;
+      padding: 0;
+      list-style: none;
+    }
+    .steps li {
+      position: relative;
+      padding: 8px 0 8px 27px;
+      color: var(--ink-2);
+      font-size: 12px;
+    }
+    .steps li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      top: 7px;
+      display: grid;
+      width: 18px;
+      height: 18px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--blue-pale);
+      color: var(--blue);
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .steps li::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      top: 27px;
+      width: 2px;
+      height: 14px;
+      background: var(--blue-pale);
+    }
+    .steps li:last-child::after { display: none; }
+
+    .prompt-form {
+      margin: 0 14px 14px;
+      padding: 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+    .prompt-form textarea {
+      width: 100%;
+      min-height: 62px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      color: var(--ink);
+      background: transparent;
+      font-size: 13px;
+    }
+    .prompt-form textarea::placeholder { color: #716d83; }
+    .prompt-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 7px;
+    }
+    .select-mode {
+      min-height: 34px;
+      padding: 0 10px;
+      border-radius: 7px;
+      background: var(--violet-pale);
+      color: var(--violet-dark);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .send-button {
+      min-width: 70px;
+      min-height: 34px;
+      border-radius: 7px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .asset-tray {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 150px repeat(4, minmax(110px, 1fr));
+      min-height: 94px;
+      border-top: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .tray-title {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 18px;
+      border-right: 1px solid var(--line);
+    }
+    .tray-title strong { font-size: 13px; }
+    .tray-title span { color: var(--ink-3); font-size: 11px; }
+    .tray-item {
+      position: relative;
+      min-height: 72px;
+      padding: 17px 14px 13px 22px;
+      border-right: 1px solid var(--line);
+      background: transparent;
+      text-align: left;
+    }
+    .tray-item::before {
+      content: "";
+      position: absolute;
+      top: 18px;
+      bottom: 18px;
+      left: 10px;
+      width: 4px;
+      border-radius: 2px;
+      background: var(--line-strong);
+    }
+    .tray-item:nth-child(2)::before { background: var(--violet); }
+    .tray-item:nth-child(3)::before { background: var(--blue-bright); }
+    .tray-item:nth-child(4)::before { background: var(--yellow); }
+    .tray-item:nth-child(5)::before { background: var(--coral); }
+    .tray-item:hover { background: var(--surface-2); }
+    .tray-item strong { display: block; margin-bottom: 3px; font-size: 12px; }
+    .tray-item span { color: var(--ink-3); font-size: 11px; }
+
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 30;
+      max-width: 320px;
+      padding: 12px 16px;
+      border: 1px solid var(--ink);
+      border-radius: 9px;
+      background: var(--ink);
+      color: #fff;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(12px);
+      pointer-events: none;
+      transition: opacity .22s var(--ease), transform .22s var(--ease);
+    }
+    .toast.is-visible { opacity: 1; transform: none; }
+
+    @media (max-width: 980px) {
+      .home-shell { grid-template-columns: 210px minmax(0, 1fr); }
+      .assembly-stage { padding-inline: 34px; }
+      .creator { margin-left: 0; grid-template-columns: 1fr; }
+      .material-column { border-top: 1px solid var(--line); border-left: 0; }
+      .design-options { grid-template-columns: repeat(3, 1fr); }
+      .design-option { grid-template-columns: 6px 1fr; }
+      .checkmark { display: none; }
+      .material-foot { margin-top: 18px; }
+      .stage-grid { grid-template-columns: minmax(0, 1fr) 284px; }
+      .canvas-zone { padding-inline: 24px; }
+    }
+
+    @media (max-width: 767px) {
+      body { background: var(--paper); }
+      .app-topbar {
+        position: relative;
+        grid-template-columns: 1fr auto;
+        grid-template-rows: 56px 50px;
+        height: 106px;
+        padding: 0 16px;
+      }
+      .brand img { width: 32px; height: 32px; }
+      .account-name { display: none; }
+      .view-switcher {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        width: 100%;
+        margin-bottom: 8px;
+      }
+      .view-switcher button { min-width: 0; }
+
+      .home-shell { display: block; min-height: auto; }
+      .project-index {
+        min-height: auto;
+        padding: 22px 16px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .section-label { margin-bottom: 13px; }
+      .project-list {
+        display: flex;
+        overflow-x: auto;
+        gap: 8px;
+        padding-bottom: 7px;
+        scroll-snap-type: x mandatory;
+      }
+      .project-item {
+        flex: 0 0 210px;
+        min-height: 64px;
+        padding-right: 8px;
+        background: rgba(255,255,255,.62);
+        scroll-snap-align: start;
+      }
+      .new-project { margin-top: 12px; }
+
+      .assembly-stage {
+        min-height: auto;
+        overflow: visible;
+        padding: 36px 16px 42px;
+      }
+      .assembly-stage::before {
+        right: 19px;
+        width: 7px;
+        height: 42px;
+        box-shadow: 10px 10px 0 var(--violet), 20px 0 0 var(--yellow);
+      }
+      .home-heading {
+        max-width: 320px;
+        margin-bottom: 29px;
+        font-size: 42px;
+        line-height: 1.02;
+      }
+      .creator { width: 100%; }
+      .creator::before { display: none; }
+      .brief-column { min-height: 385px; padding: 21px 18px 18px; }
+      .brief-input { min-height: 166px; font-size: 18px; }
+      .creator-actions { align-items: stretch; flex-direction: column; }
+      .primary, .secondary { width: 100%; }
+      .material-column { padding: 20px 17px; }
+      .design-options { grid-template-columns: 1fr; }
+      .design-option { grid-template-columns: 7px 1fr auto; }
+      .checkmark { display: grid; }
+
+      .workspace-ribbon {
+        grid-template-columns: 1fr auto;
+        min-height: 96px;
+        padding: 10px 14px;
+      }
+      .crumbs { grid-column: 1 / -1; }
+      .version-cluster { justify-self: start; }
+      .collab-label { display: none; }
+
+      .workspace-stage {
+        display: block;
+        min-height: auto;
+      }
+      .tool-spine {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        width: 100%;
+        padding: 7px 10px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        overflow-x: auto;
+      }
+      .tool-button { width: 100%; }
+      .tool-button.is-last { margin-top: 0; }
+      .stage-grid {
+        display: flex;
+        min-height: auto;
+        flex-direction: column;
+      }
+      .canvas-zone {
+        min-height: 470px;
+        padding: 26px 14px 64px;
+      }
+      .browser-frame { border-radius: 9px; }
+      .browser-bar {
+        grid-template-columns: 46px 1fr;
+        gap: 7px;
+        height: 44px;
+        padding: 0 9px;
+      }
+      .window-controls { gap: 5px; }
+      .window-controls i { width: 7px; height: 7px; }
+      .live-status { display: none; }
+      .product-preview {
+        grid-template-columns: 56px 1fr;
+        min-height: 340px;
+      }
+      .preview-nav { padding: 18px 9px; }
+      .preview-mark { width: 21px; height: 21px; margin-bottom: 24px; }
+      .preview-nav span { overflow: hidden; font-size: 7px; text-overflow: clip; }
+      .preview-main { padding: 27px 18px; }
+      .preview-main h2 { font-size: 25px; }
+      .preview-main > p { margin-bottom: 22px; }
+      .preview-projects { grid-template-columns: 1fr; }
+      .preview-panel { min-height: 85px; padding: 14px; }
+      .canvas-tools { right: 14px; bottom: 14px; }
+
+      .process-rail {
+        min-height: 560px;
+        border-top: 1px solid var(--line);
+        border-left: 0;
+      }
+      .conversation { overflow: visible; }
+      .asset-tray {
+        display: flex;
+        overflow-x: auto;
+        min-height: 98px;
+        scroll-snap-type: x mandatory;
+      }
+      .tray-title, .tray-item {
+        flex: 0 0 150px;
+        scroll-snap-align: start;
+      }
+      .tray-item { min-height: 96px; }
+      .toast { right: 14px; bottom: 14px; left: 14px; max-width: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-topbar">
+    <a class="brand" href="#" aria-label="Draftly 项目首页" data-view-link="home">
+      <img src="../assets/app-icons/source/logo.svg" alt="Draftly 织巢鸟 Logo">
+      <span>Draftly</span>
+    </a>
+
+    <nav class="view-switcher" aria-label="原型视图">
+      <button type="button" role="tab" aria-selected="true" aria-controls="home-view" id="home-tab" data-view="home">项目首页</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="workspace-view" id="workspace-tab" data-view="workspace">核心工作区</button>
+    </nav>
+
+    <div class="account">
+      <span class="account-name">丁文江</span>
+      <span class="avatar" aria-hidden="true">DW</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="view is-active" id="home-view" role="tabpanel" aria-labelledby="home-tab">
+      <div class="home-shell">
+        <aside class="project-index" aria-labelledby="project-library-title">
+          <h2 class="section-label" id="project-library-title">项目库</h2>
+          <div class="project-list">
+            <button type="button" class="project-item" data-toast="已打开「营销站改版」">
+              <span class="strip" aria-hidden="true"></span>
+              <span>
+                <span class="project-title">营销站改版</span>
+                <span class="project-meta">3 个方案，昨天更新</span>
+              </span>
+            </button>
+            <button type="button" class="project-item" data-toast="已打开「开发者控制台」">
+              <span class="strip" aria-hidden="true"></span>
+              <span>
+                <span class="project-title">开发者控制台</span>
+                <span class="project-meta">2 个方案，周五更新</span>
+              </span>
+            </button>
+            <button type="button" class="project-item" data-toast="已打开「移动端记账」">
+              <span class="strip" aria-hidden="true"></span>
+              <span>
+                <span class="project-title">移动端记账</span>
+                <span class="project-meta">4 个方案，7 月 28 日</span>
+              </span>
+            </button>
+          </div>
+          <button type="button" class="new-project" data-toast="创建器已准备好">＋ 新项目</button>
+        </aside>
+
+        <section class="assembly-stage" aria-labelledby="create-title">
+          <h1 class="home-heading" id="create-title">把想法<span class="material">编织</span>成<br>可运行的产品</h1>
+
+          <form class="creator" id="creator-form">
+            <div class="brief-column">
+              <div class="creator-kicker">
+                <span>描述页面目标</span>
+                <span class="live-path">材料已连接</span>
+              </div>
+              <label class="brief-label" for="brief">你想做什么？</label>
+              <textarea class="brief-input" id="brief" name="brief" aria-describedby="brief-help">为本地优先的开发工具设计一个清晰、克制的项目概览页</textarea>
+              <p class="brief-helper" id="brief-help">说明用户、关键任务和希望避免的模式，生成结果会更准确。</p>
+              <div class="creator-actions">
+                <button class="primary" type="submit">生成设计方案</button>
+                <button class="secondary" type="button" data-toast="选择要导入的 DESIGN.md">导入设计规范</button>
+              </div>
+            </div>
+
+            <div class="material-column">
+              <h2 class="material-heading">选择 DESIGN.md 基础</h2>
+              <fieldset class="design-options">
+                <legend class="sr-only">设计规范</legend>
+                <label class="design-option">
+                  <input type="radio" name="design-base" value="Vercel" checked>
+                  <span class="design-swatch" aria-hidden="true"></span>
+                  <span>
+                    <span class="design-name">Vercel</span>
+                    <span class="design-note">精确，产品优先</span>
+                  </span>
+                  <span class="checkmark" aria-hidden="true">✓</span>
+                </label>
+                <label class="design-option">
+                  <input type="radio" name="design-base" value="Editorial">
+                  <span class="design-swatch" aria-hidden="true"></span>
+                  <span>
+                    <span class="design-name">Editorial</span>
+                    <span class="design-note">强层级，重内容</span>
+                  </span>
+                  <span class="checkmark" aria-hidden="true">✓</span>
+                </label>
+                <label class="design-option">
+                  <input type="radio" name="design-base" value="Brutalist">
+                  <span class="design-swatch" aria-hidden="true"></span>
+                  <span>
+                    <span class="design-name">Brutalist</span>
+                    <span class="design-note">直接，结构外显</span>
+                  </span>
+                  <span class="checkmark" aria-hidden="true">✓</span>
+                </label>
+              </fieldset>
+
+              <div class="count-row">
+                <span class="material-heading">方案数量</span>
+                <div class="stepper" aria-label="方案数量">
+                  <button type="button" aria-label="减少方案数量" data-count="-1">−</button>
+                  <output id="concept-count" aria-live="polite">3</output>
+                  <button type="button" aria-label="增加方案数量" data-count="1">＋</button>
+                </div>
+              </div>
+              <p class="material-foot">每个方案都包含可预览页面、设计规范与可导出源码。</p>
+            </div>
+          </form>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="workspace-view" role="tabpanel" aria-labelledby="workspace-tab" hidden>
+      <div class="workspace">
+        <header class="workspace-ribbon">
+          <div class="crumbs" aria-label="当前项目">
+            <span>本地优先开发工具</span>
+            <span class="crumb-sep">/</span>
+            <span>方案 2</span>
+            <span class="crumb-sep">/</span>
+            <span>v4</span>
+          </div>
+          <div class="version-cluster" aria-label="方案切换">
+            <button type="button" aria-pressed="false" data-version="方案 1">方案 1</button>
+            <button type="button" aria-pressed="true" data-version="方案 2">方案 2</button>
+            <button type="button" aria-pressed="false" data-version="方案 3">方案 3</button>
+          </div>
+          <div class="collab">
+            <span class="collab-label">3 位成员</span>
+            <span class="mini-avatar" aria-label="成员 林漾">LY</span>
+            <span class="mini-avatar" aria-label="成员 周可">ZK</span>
+          </div>
+        </header>
+
+        <div class="workspace-stage">
+          <nav class="tool-spine" aria-label="工作区工具">
+            <button type="button" class="tool-button" aria-label="预览" aria-pressed="true" data-tool="预览">预览</button>
+            <button type="button" class="tool-button" aria-label="点选修改" aria-pressed="false" data-tool="点选修改">点选</button>
+            <button type="button" class="tool-button" aria-label="源码" aria-pressed="false" data-tool="源码">源码</button>
+            <button type="button" class="tool-button" aria-label="版本历史" aria-pressed="false" data-tool="版本历史">历史</button>
+            <button type="button" class="tool-button" aria-label="导出" aria-pressed="false" data-tool="导出">导出</button>
+            <button type="button" class="tool-button is-last" aria-label="新项目" aria-pressed="false" data-tool="新项目">新建</button>
+          </nav>
+
+          <div class="stage-grid">
+            <section class="canvas-zone" aria-label="实时预览画布">
+              <article class="browser-frame">
+                <header class="browser-bar">
+                  <div class="window-controls" aria-hidden="true"><i></i><i></i><i></i></div>
+                  <div class="address">draftly.local/projects/overview</div>
+                  <div class="live-status">实时预览</div>
+                </header>
+                <div class="product-preview" aria-label="本地优先开发工具的项目概览页面缩略预览">
+                  <nav class="preview-nav" aria-label="缩略预览导航">
+                    <div class="preview-mark" aria-hidden="true"></div>
+                    <span class="active">项目概览</span>
+                    <span>工作目录</span>
+                    <span>同步记录</span>
+                    <span>设置</span>
+                  </nav>
+                  <div class="preview-main">
+                    <h2>代码留在本地，<br>进展清晰可见。</h2>
+                    <p>把分支、任务与本地工作目录组织在一个安静的项目视图中。</p>
+                    <div class="preview-projects">
+                      <section class="preview-panel">
+                        <strong>Draftly Desktop</strong>
+                        <p>当前分支 feature/project-overview</p>
+                      </section>
+                      <section class="preview-panel">
+                        <strong>同步就绪</strong>
+                        <p>工作目录没有待处理冲突</p>
+                      </section>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <div class="canvas-tools" aria-label="画布缩放">
+                <button type="button" aria-label="缩小" data-toast="画布缩放为 80%">−</button>
+                <button type="button" aria-label="当前缩放比例" data-toast="画布已适合窗口">92%</button>
+                <button type="button" aria-label="放大" data-toast="画布缩放为 100%">＋</button>
+              </div>
+            </section>
+
+            <aside class="process-rail" aria-labelledby="conversation-title">
+              <header class="process-head">
+                <h2 id="conversation-title">设计对话</h2>
+                <span>完成</span>
+              </header>
+              <div class="conversation" id="conversation">
+                <article class="message user">
+                  <div class="message-meta">你</div>
+                  <p>把项目概览做得更克制，先突出当前工作目录和同步状态。减少解释性文案。</p>
+                </article>
+                <ol class="steps" aria-label="生成步骤">
+                  <li>重组信息层级</li>
+                  <li>收紧项目卡片密度</li>
+                  <li>校准同步状态色</li>
+                </ol>
+                <article class="message agent">
+                  <div class="message-meta">Draftly</div>
+                  <p>已完成方案 2 的第 4 次迭代。当前工作目录成为首要内容，同步状态收敛为单一蓝色连接信号。</p>
+                </article>
+              </div>
+              <form class="prompt-form" id="prompt-form">
+                <label class="sr-only" for="prompt">继续描述修改</label>
+                <textarea id="prompt" placeholder="继续描述修改，或点选预览中的元素"></textarea>
+                <div class="prompt-actions">
+                  <button class="select-mode" type="button" data-toast="点选修改已开启">点选修改</button>
+                  <button class="send-button" type="submit">发送</button>
+                </div>
+              </form>
+            </aside>
+
+            <nav class="asset-tray" aria-label="工作区资源">
+              <div class="tray-title">
+                <strong>项目材料</strong>
+                <span>随方案持续编织</span>
+              </div>
+              <button class="tray-item" type="button" data-toast="已打开设计规范">
+                <strong>设计规范</strong>
+                <span>颜色、字型、间距</span>
+              </button>
+              <button class="tray-item" type="button" data-toast="已打开源码">
+                <strong>源码</strong>
+                <span>页面与组件文件</span>
+              </button>
+              <button class="tray-item" type="button" data-toast="已打开版本历史">
+                <strong>版本历史</strong>
+                <span>当前为 v4</span>
+              </button>
+              <button class="tray-item" type="button" data-toast="正在准备导出">
+                <strong>导出</strong>
+                <span>下载可运行项目</span>
+              </button>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const views = document.querySelectorAll(".view");
+      const viewButtons = document.querySelectorAll("[data-view]");
+      const toast = document.getElementById("toast");
+      let toastTimer;
+
+      function showToast(message) {
+        window.clearTimeout(toastTimer);
+        toast.textContent = message;
+        toast.classList.add("is-visible");
+        toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 2200);
+      }
+
+      function setView(name, focusPanel = false) {
+        views.forEach((view) => {
+          const active = view.id === `${name}-view`;
+          view.classList.toggle("is-active", active);
+          view.hidden = !active;
+        });
+        viewButtons.forEach((button) => {
+          button.setAttribute("aria-selected", String(button.dataset.view === name));
+        });
+        if (focusPanel) document.getElementById(`${name}-view`).focus({ preventScroll: true });
+      }
+
+      viewButtons.forEach((button) => {
+        button.addEventListener("click", () => setView(button.dataset.view));
+        button.addEventListener("keydown", (event) => {
+          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+          event.preventDefault();
+          const next = button.dataset.view === "home" ? "workspace" : "home";
+          const nextButton = document.querySelector(`[data-view="${next}"]`);
+          setView(next, true);
+          nextButton.focus();
+        });
+      });
+      const initialView = new URLSearchParams(window.location.search).get("view");
+      if (initialView === "home" || initialView === "workspace") setView(initialView);
+
+      document.querySelectorAll("[data-view-link]").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          setView(link.dataset.viewLink);
+        });
+      });
+
+      const countOutput = document.getElementById("concept-count");
+      document.querySelectorAll("[data-count]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const next = Math.max(1, Math.min(6, Number(countOutput.value) + Number(button.dataset.count)));
+          countOutput.value = next;
+          countOutput.textContent = next;
+          showToast(`将生成 ${next} 个设计方案`);
+        });
+      });
+
+      document.getElementById("creator-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        showToast("方案材料已提交，进入核心工作区");
+        window.setTimeout(() => setView("workspace"), 450);
+      });
+
+      document.querySelectorAll("[data-version]").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll("[data-version]").forEach((item) => item.setAttribute("aria-pressed", "false"));
+          button.setAttribute("aria-pressed", "true");
+          showToast(`已切换到${button.dataset.version}`);
+        });
+      });
+
+      document.querySelectorAll("[data-tool]").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll("[data-tool]").forEach((item) => item.setAttribute("aria-pressed", "false"));
+          button.setAttribute("aria-pressed", "true");
+          showToast(`${button.dataset.tool}工具已开启`);
+        });
+      });
+
+      document.querySelectorAll("[data-toast]").forEach((button) => {
+        button.addEventListener("click", () => showToast(button.dataset.toast));
+      });
+
+      document.getElementById("prompt-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const input = document.getElementById("prompt");
+        const text = input.value.trim();
+        if (!text) {
+          showToast("请先描述要修改的内容");
+          input.focus();
+          return;
+        }
+        const article = document.createElement("article");
+        article.className = "message user";
+        const meta = document.createElement("div");
+        meta.className = "message-meta";
+        meta.textContent = "你";
+        const paragraph = document.createElement("p");
+        paragraph.textContent = text;
+        article.append(meta, paragraph);
+        const conversation = document.getElementById("conversation");
+        conversation.appendChild(article);
+        input.value = "";
+        conversation.scrollTo({
+          top: conversation.scrollHeight,
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        });
+        showToast("修改需求已加入当前迭代");
+      });
+    })();
+  </script>
+</body>
+</html>

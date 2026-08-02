@@ -55,16 +55,42 @@ export function buildIterateInstruction({ instruction }: { instruction: string }
 export function buildSourceEditInstruction({
   instruction,
   context,
+  count = 1,
+  annotations,
 }: {
   instruction: string;
   context: string;
+  count?: number;
+  annotations?: { context: string; comment: string }[];
 }): string {
+  if (annotations && annotations.length) {
+    const blocks = annotations
+      .map(
+        (item, index) =>
+          `Element ${index + 1}:\n${item.context}\nRequested change: ${item.comment}`,
+      )
+      .join('\n\n');
+    return [
+      STACK_RULES,
+      `The user annotated ${annotations.length} rendered element(s). Apply the change described for each element independently:`,
+      blocks,
+      instruction?.trim() ? `Additional overall guidance:\n${instruction}` : null,
+      'Locate the actual component(s) in the project and make the smallest complete source change for each element. Preserve accessibility and all component states.',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  }
+  const multiple = count > 1;
   return [
     STACK_RULES,
-    'The user selected a rendered element that maps to the following source context:',
+    multiple
+      ? `The user selected ${count} rendered elements that map to the following source contexts:`
+      : 'The user selected a rendered element that maps to the following source context:',
     context,
-    `Implement this goal for the selected element:\n${instruction}`,
-    'Locate the actual component in the project and make the smallest complete source change. Preserve accessibility and all component states.',
+    multiple
+      ? `Implement this goal for all of the selected elements:\n${instruction}`
+      : `Implement this goal for the selected element:\n${instruction}`,
+    'Locate the actual component(s) in the project and make the smallest complete source change. Preserve accessibility and all component states.',
   ].join('\n\n');
 }
 

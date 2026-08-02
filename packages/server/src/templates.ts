@@ -16,7 +16,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateDesignMd, parseDesignMd } from '../../shared/src/design-md.js';
+import { validateDesignMd, parseDesignMd, type DesignMeta } from '../../shared/src/design-md.js';
 import type { DesignTemplate } from './types.js';
 
 const TEMPLATES_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../data/templates');
@@ -68,15 +68,17 @@ export async function loadTemplates(dir: string = TEMPLATES_DIR): Promise<Design
   return templates;
 }
 
-/** 列表摘要（不含 designMd 全文；附色板供编辑器预览） */
+/** 列表摘要（不含 designMd 全文；附完整 token 供编辑器展示设计系统） */
 export function templateSummary(t: DesignTemplate): Omit<DesignTemplate, 'designMd'> & {
   colors: Record<string, string>;
+  meta: DesignMeta;
 } {
   const { meta } = parseDesignMd(t.designMd);
   return {
     id: t.id, name: t.name, sourceUrl: t.sourceUrl, tags: t.tags,
     confidence: t.confidence, screenshot: t.screenshot ?? null,
     colors: meta.colors ?? {},
+    meta,
   };
 }
 

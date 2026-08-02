@@ -34,15 +34,15 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
   const [preview, setPreview] = useState(null);
   const [draftDesign, setDraftDesign] = useState(EMPTY_DESIGN);
   const [stageView, setStageView] = useState("preview");
+  const [designView, setDesignView] = useState("system");
   const [activeKey, setActiveKey] = useState("");
   const [chatStore, setChatStore] = useState({});
   const [pickMode, setPickMode] = useState(false);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState([]);
   const [image, setImage] = useState(null);
   const [sending, setSending] = useState(false);
   const [taskMode, setTaskMode] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [sourceOpen, setSourceOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [rollbackVersion, setRollbackVersion] = useState(null);
   const [text, setText] = useState("");
@@ -143,6 +143,23 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
     }
   }, [chatStore, loadDraftIntoView, project, projectId, pushMessage, readOnly]);
 
+  const renameProject = useCallback(async (nextTitle) => {
+    const title = String(nextTitle || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    if (readOnly || !title || title === project?.title) return;
+    const previous = project;
+    setProject((current) => (current ? { ...current, title } : current));
+    try {
+      const { project: updated } = await api(`/api/projects/${encodeURIComponent(projectId)}`, {
+        method: "PATCH",
+        body: { title },
+      });
+      setProject(updated);
+    } catch (error) {
+      setProject(previous);
+      toast.add({ title: "重命名失败", description: error.message, type: "error" });
+    }
+  }, [project, projectId, readOnly]);
+
   const confirmRollback = useCallback(async () => {
     if (!current || rollbackVersion === null || readOnly) return;
     const version = rollbackVersion;
@@ -184,21 +201,24 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
 
   const send = useCallback(async () => {
     const message = text.trim();
-    if (!message || sending || readOnly) return;
+    const hasSelection = selected?.length > 0 && !image;
+    const hasComments = hasSelection && selected.some((item) => item.comment?.trim());
+    if ((!message && !hasComments) || sending || readOnly) return;
 
     if (!current) return;
 
-    const userMessage = { role: "user", text: message };
+    const displayText = message || (hasSelection ? `标注修改 ${selected.length} 处元素` : "");
+    const userMessage = { role: "user", text: displayText };
     if (image) userMessage.image = image;
-    if (selected && !image) userMessage.locator = selected;
+    if (hasSelection) userMessage.locators = selected;
     pushMessage(userMessage);
     const pending = pushMessage({
       role: "assistant",
       kind: "pending",
-      text: image ? "Pi 正在按截图修改" : selected ? "Pi 正在修改元素" : "Pi 正在迭代草稿",
+      text: image ? "Pi 正在按截图修改" : hasSelection ? "Pi 正在修改元素" : "Pi 正在迭代草稿",
       steps: [],
     });
-    setTaskMode(image ? "image" : selected ? "source" : "iterate");
+    setTaskMode(image ? "image" : hasSelection ? "source" : "iterate");
     setSending(true);
     try {
       let endpoint = `/api/drafts/${encodeURIComponent(current.meta.id)}/iterate`;
@@ -208,10 +228,14 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
         endpoint = `/api/drafts/${encodeURIComponent(current.meta.id)}/edit-by-image`;
         body = { image, instruction: message };
         successText = "已按截图完成修改";
-      } else if (selected) {
+      } else if (hasSelection) {
         endpoint = `/api/drafts/${encodeURIComponent(current.meta.id)}/edit-source`;
-        body = { locator: selected, instruction: message };
-        successText = `已修改 ${selected.component || `<${selected.tagName}>`}`;
+        body = { locators: selected, instruction: message };
+        const first = selected[0];
+        successText =
+          selected.length > 1
+            ? `已修改 ${selected.length} 个元素`
+            : `已修改 ${first.component || `<${first.tagName}>`}`;
       }
       await apiStream(endpoint, body, (event) => updateProgress(pending, event));
       const loaded = await loadDraftIntoView(current.meta.id);
@@ -223,7 +247,8 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
       });
       setText("");
       setImage(null);
-      setSelected(null);
+      setSelected([]);
+      sendPreviewMessage({ type: "draftly:clear-selection" });
     } catch (error) {
       replaceMessage(pending, {
         role: "assistant",
@@ -243,6 +268,7 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
     replaceMessage,
     selected,
     sending,
+    sendPreviewMessage,
     text,
     updateProgress,
     readOnly,
@@ -295,6 +321,16 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
     }
   }, [draftDesign.data?.content]);
 
+  const copyDesignValue = useCallback(async (value) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.add({ title: `已复制 ${value}`, type: "success" });
+    } catch (error) {
+      toast.add({ title: "复制失败", description: error.message, type: "error" });
+    }
+  }, [toast]);
+
   useEffect(() => {
     const onPaste = (event) => {
       const item = [...(event.clipboardData?.items || [])].find((candidate) => candidate.type.startsWith("image/"));
@@ -318,6 +354,56 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
     });
   }, [pickMode, preview?.token, sendPreviewMessage]);
 
+  const cancelPick = useCallback(() => {
+    let handled = false;
+    setSelected((value) => {
+      if (value?.length) handled = true;
+      return [];
+    });
+    setPickMode((value) => {
+      if (!handled && value) handled = true;
+      return false;
+    });
+    sendPreviewMessage({ type: "draftly:clear-selection" });
+    return handled;
+  }, [sendPreviewMessage]);
+
+  const deselectOne = useCallback((locator) => {
+    setSelected((value) => (value || []).filter((item) => item !== locator));
+    sendPreviewMessage({
+      type: "draftly:deselect",
+      file: locator.file,
+      line: locator.line,
+      column: locator.column,
+    });
+  }, [sendPreviewMessage]);
+
+  const updateSelectedComment = useCallback((locator, comment) => {
+    setSelected((value) => (value || []).map((item) => (item === locator ? { ...item, comment } : item)));
+  }, []);
+
+  useEffect(() => {
+    if (historyOpen || membersOpen || rollbackVersion !== null) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (cancelPick()) event.preventDefault();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [cancelPick, historyOpen, membersOpen, rollbackVersion]);
+
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (event.source !== previewRef.current?.contentWindow) return;
+      if (event.data?.type !== "draftly:escape") return;
+      const expectedOrigin = preview?.url ? new URL(preview.url).origin : null;
+      if (!expectedOrigin || event.origin !== expectedOrigin) return;
+      cancelPick();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [cancelPick, preview?.url]);
+
   useEffect(() => {
     const onMessage = (event) => {
       if (event.source !== previewRef.current?.contentWindow) return;
@@ -333,8 +419,15 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
         return;
       }
       if (event.data?.type !== "draftly:selection" || event.data.token !== preview?.token) return;
-      setSelected(event.data.locator);
-      const file = encodeURIComponent(event.data.locator.file);
+      const locators = Array.isArray(event.data.locators)
+        ? event.data.locators
+        : event.data.locator
+          ? [event.data.locator]
+          : [];
+      setSelected(locators);
+      const latest = locators[locators.length - 1];
+      if (!latest) return;
+      const file = encodeURIComponent(latest.file);
       api(`/api/drafts/${encodeURIComponent(current.meta.id)}/source?file=${file}`, { method: "GET" })
         .then((source) => setCurrent((value) => value ? {
           ...value,
@@ -366,8 +459,10 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
           drafts={drafts}
           sending={sending}
           user={user}
+          readOnly={readOnly}
           onSignOut={onSignOut}
           onSelectDraft={enterDraft}
+          onRename={renameProject}
           onHome={() => onNavigate("/")}
           onNewProject={() => onNavigate("/")}
           onHistory={() => setHistoryOpen(true)}
@@ -381,6 +476,7 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
             styleDesign={EMPTY_DESIGN}
             styleId="__default__"
             stageView={stageView}
+            designView={designView}
             previewRef={previewRef}
             sending={sending}
             variantCount={String(drafts.length)}
@@ -389,10 +485,11 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
             onPreviewLoad={onPreviewLoad}
             onPreviewNavigate={navigatePreview}
             onStageViewChange={setStageView}
+            onDesignViewChange={setDesignView}
             onCopyDesign={copyDesign}
+            onCopyValue={copyDesignValue}
             onRetryStyle={() => {}}
             onTogglePick={() => setPickMode((value) => !value)}
-            onOpenSource={() => setSourceOpen(true)}
             onNewDraft={() => onNavigate("/")}
             readOnly={readOnly}
           />
@@ -413,7 +510,9 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
             onStyleChange={() => {}}
             onVariantsChange={() => {}}
             onRemoveImage={() => setImage(null)}
-            onRemoveSelected={() => setSelected(null)}
+            onRemoveSelected={deselectOne}
+            onClearSelected={cancelPick}
+            onCommentChange={updateSelectedComment}
             onSend={send}
             onSelectVariant={enterDraft}
             readOnly={readOnly}
@@ -435,10 +534,8 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
           current={current}
           versions={versions}
           historyOpen={historyOpen}
-          sourceOpen={sourceOpen}
           rollbackVersion={rollbackVersion}
           onHistoryChange={setHistoryOpen}
-          onSourceChange={setSourceOpen}
           onRollbackRequest={setRollbackVersion}
           onRollbackCancel={() => setRollbackVersion(null)}
           onRollbackConfirm={confirmRollback}
