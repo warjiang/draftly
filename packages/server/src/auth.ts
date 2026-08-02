@@ -9,36 +9,6 @@ import {
   verifications,
 } from './db/schema.js';
 
-export type AuthUser = {
-  id: string;
-  name: string;
-  email: string;
-  emailVerified: boolean;
-  image: string | null;
-  githubLogin: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type AuthSession = {
-  session: {
-    id: string;
-    userId: string;
-    token: string;
-    expiresAt: Date;
-    createdAt: Date;
-    updatedAt: Date;
-    ipAddress?: string | null;
-    userAgent?: string | null;
-  };
-  user: AuthUser;
-};
-
-export interface AuthService {
-  handler(request: Request): Promise<Response>;
-  getSession(headers: Headers): Promise<AuthSession | null>;
-}
-
 function normalizeGithubLogin(login: unknown): string {
   const normalized = String(login ?? '').trim().toLowerCase();
   if (!/^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/.test(normalized)) {
@@ -47,8 +17,8 @@ function normalizeGithubLogin(login: unknown): string {
   return normalized;
 }
 
-export function createAuthService(database: Database, config: AppConfig): AuthService {
-  const auth = betterAuth({
+function createAuth(database: Database, config: AppConfig) {
+  return betterAuth({
     appName: 'Draftly',
     baseURL: config.auth.baseUrl,
     basePath: '/api/auth',
@@ -99,6 +69,21 @@ export function createAuthService(database: Database, config: AppConfig): AuthSe
       },
     },
   });
+}
+
+type BetterAuthInstance = ReturnType<typeof createAuth>;
+type SessionResponse = Awaited<ReturnType<BetterAuthInstance['api']['getSession']>>;
+
+export type AuthSession = NonNullable<SessionResponse>;
+export type AuthUser = AuthSession['user'];
+
+export interface AuthService {
+  handler(request: Request): Promise<Response>;
+  getSession(headers: Headers): Promise<AuthSession | null>;
+}
+
+export function createAuthService(database: Database, config: AppConfig): AuthService {
+  const auth = createAuth(database, config);
 
   return {
     async handler(request) {
@@ -109,7 +94,7 @@ export function createAuthService(database: Database, config: AppConfig): AuthSe
       return auth.handler(request);
     },
     async getSession(headers) {
-      return await auth.api.getSession({ headers }) as AuthSession | null;
+      return await auth.api.getSession({ headers });
     },
   };
 }
