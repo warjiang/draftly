@@ -4,7 +4,7 @@
 </Properties>
 <uap:VisualElements
   DisplayName="Draftly"
-  Description="A local-first co-creative studio where designers and frontend builders work with AI to weave rough drafts into polished, editable, runnable interfaces"
+  Description="A local-first co-creative studio where designers and frontend builders turn rough drafts into polished editable interfaces."
   BackgroundColor="#F6F2EA"
   Square44x44Logo="Assets\Square44x44Logo.png"
   Square150x150Logo="Assets\Square150x150Logo.png">
