@@ -89,9 +89,9 @@ jobs:
           exit 1
       - name: Create object bucket
         run: >-
-          docker run --rm --network host
+          docker run --rm --network host --entrypoint /bin/sh
           crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-mc:RELEASE.2025-04-16T18-13-26Z
-          sh -c "mc alias set local http://127.0.0.1:9000 draftly draftly-local-secret &&
+          -c "mc alias set local http://127.0.0.1:9000 draftly draftly-local-secret &&
           mc mb --ignore-existing local/draftly"
       - run: npm run db:migrate
       - run: npm run test --workspace @draftly/server
