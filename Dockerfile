@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/node:24.18.1-bookworm-slim
+ARG NODE_IMAGE=node:24.18.1-bookworm-slim
 ARG PI_VERSION=0.83.0
 
 FROM ${NODE_IMAGE} AS dependencies

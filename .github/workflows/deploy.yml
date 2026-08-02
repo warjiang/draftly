@@ -46,11 +46,11 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          REGISTRY_USERNAME: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
-          REGISTRY_PASSWORD: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+          REGISTRY_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.GHCR_TOKEN }}
         run: |
           printf '%s' "$REGISTRY_PASSWORD" | ssh "$DEPLOY_USER@$DEPLOY_HOST" \
-            "docker login crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com -u '$REGISTRY_USERNAME' --password-stdin"
+            "docker login ghcr.io -u '$REGISTRY_USERNAME' --password-stdin"
           ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && \
             docker compose --env-file .env.production -f compose.prod.yml pull && \
             docker compose --env-file .env.production -f compose.prod.yml run --rm migrate && \
