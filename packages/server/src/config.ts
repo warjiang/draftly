@@ -19,6 +19,7 @@ const environmentSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   S3_FORCE_PATH_STYLE: booleanString.default(false),
+  NPM_CONFIG_REGISTRY: z.string().url().optional(),
   DRAFTLY_WORKSPACES_DIR: z.string().default('.draftly/workspaces'),
   TRUST_PROXY: booleanString.default(false),
 });
@@ -42,6 +43,7 @@ export type AppConfig = {
     secretAccessKey: string;
     forcePathStyle: boolean;
   };
+  npmRegistry?: string;
   workspacesDir: string;
   trustProxy: boolean;
 };
@@ -74,6 +76,7 @@ export function readConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
       secretAccessKey: value.S3_SECRET_ACCESS_KEY,
       forcePathStyle: value.S3_FORCE_PATH_STYLE,
     },
+    npmRegistry: value.NPM_CONFIG_REGISTRY,
     workspacesDir: path.resolve(PROJECT_ROOT, value.DRAFTLY_WORKSPACES_DIR),
     trustProxy: value.TRUST_PROXY,
   };

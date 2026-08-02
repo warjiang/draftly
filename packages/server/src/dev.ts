@@ -38,6 +38,7 @@ const drafts = new PersistentDraftStore({
   sql: database.client,
   workspaces,
   access: projects,
+  npmRegistry: config.npmRegistry,
 });
 const { app, previewManager } = createApiApp({
   auth,

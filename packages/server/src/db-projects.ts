@@ -104,11 +104,12 @@ export class DatabaseProjectStore {
     const draftRows = await this.db.select({ id: drafts.id, projectId: drafts.projectId })
       .from(drafts)
       .where(inArray(drafts.projectId, projectIds));
-    return rows.map(({ project, role }) => toMeta(
-      project,
-      draftRows.filter((draft) => draft.projectId === project.id).map((draft) => draft.id),
-      role,
-    ));
+    return rows.flatMap(({ project, role }) => {
+      const draftIds = draftRows
+        .filter((draft) => draft.projectId === project.id)
+        .map((draft) => draft.id);
+      return draftIds.length ? [toMeta(project, draftIds, role)] : [];
+    });
   }
 
   async meta(id: unknown): Promise<ProjectMeta> {

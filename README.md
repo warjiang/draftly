@@ -12,7 +12,7 @@ PostgreSQL 保存账号、会话、项目、版本和成员关系，S3 兼容对
 开发和生产环境只使用以下私有基础镜像：
 
 ```text
-crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/node:20-bookworm-slim
+crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/node:24.18.1-bookworm-slim
 crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/postgres:17.6-bookworm
 crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-minio:RELEASE.2025-04-22T22-12-26Z
 crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-mc:RELEASE.2025-04-16T18-13-26Z
@@ -23,6 +23,8 @@ crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-mc:REL
 ```text
 crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/draftly:<tag>
 ```
+
+应用镜像已预装 Pi CLI、Git、`fd` 和 `ripgrep`，运行时不需要再下载 Pi 的搜索工具。
 
 运行 Compose 前先登录私有仓库：
 
@@ -50,7 +52,31 @@ docker login crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com
 npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.83.0
 pi
 mkdir -p .draftly/pi
-# 将已认证的 Pi 配置放入 .draftly/pi，或通过 PI_CONFIG_DIR 指向已有目录
+# 将已认证的 Pi 配置放入 .draftly/pi，或通过 PI_CONFIG_DIR 指向可写目录
+```
+
+`DRAFTLY_PI_PROVIDER` 和 `DRAFTLY_PI_MODEL` 只负责选择模型，不包含认证信息。使用内置的
+Kimi For Coding 时，还需要在 `.env` 中配置：
+
+```dotenv
+DRAFTLY_PI_PROVIDER=kimi-coding
+DRAFTLY_PI_MODEL=k3
+KIMI_API_KEY=<your-kimi-api-key>
+```
+
+也可以在宿主机运行 `pi` 并通过 `/login` 登录，然后将生成的 `~/.pi/agent/` 复制到
+`${PI_CONFIG_DIR}/agent/`。开发和生产容器都固定通过
+`PI_CODING_AGENT_DIR=/home/node/.pi/agent` 读取该目录。该挂载必须可写，因为 Pi 会维护
+model catalog、trust 状态并刷新凭据。生产宿主机应将目录权限限制为运行容器的 UID 1000：
+
+```bash
+sudo install -d -m 700 -o 1000 -g 1000 /opt/draftly/secrets/pi
+```
+
+可用以下命令确认凭据与模型：
+
+```bash
+docker compose -f compose.dev.yml exec app pi --list-models kimi-coding
 ```
 
 启动完整开发环境：
@@ -63,13 +89,32 @@ npm run docker:dev
 ```
 
 打开 <http://127.0.0.1:4173>。开发 Compose 会启动应用、PostgreSQL、MinIO，创建 `draftly`
-bucket 并执行数据库 migration；源码以 bind mount 注入，服务端支持热更新。PostgreSQL 位于
-`127.0.0.1:5432`，MinIO API/Console 位于 `127.0.0.1:9000/9001`。
+bucket 并执行数据库 migration。容器会在后台持续运行；源码以 bind mount 注入，编辑器使用
+Vite HMR，服务端使用 `tsx watch`，保存代码后无需重启 Compose。PostgreSQL 位于
+`127.0.0.1:5432`，MinIO API/Console 位于 `127.0.0.1:9000/9001`。需要查看日志时执行
+`npm run docker:dev:logs`。
+
+生成项目时的 `npm install` 默认使用 npm 官方 registry。网络受限时可在 `.env`、
+`.env.production` 或启动命令中设置，例如：
+
+```dotenv
+NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+```
+
+依赖安装的 stdout/stderr 会以 `[draft:<id>:npm]` 前缀实时写入应用日志，可通过
+`npm run docker:dev:logs` 查看。
 
 ```bash
+npm run docker:dev        # 首次启动，或依赖/Dockerfile 变化后重建
+npm run docker:dev:logs   # 跟踪应用日志，Ctrl-C 不会停止容器
+npm run docker:dev:reload # 修改 .env 后重新创建 app 容器，不重建镜像
 npm run docker:dev:down   # 停止容器，保留数据
 npm run docker:dev:reset  # 停止容器并删除开发 volumes，会清空所有本地数据
 ```
+
+`.env` 由 Docker Compose 在创建容器时读取，不支持热重载；修改后执行
+`npm run docker:dev:reload`。不要使用 `docker compose restart app`，因为 restart 会继续使用
+旧容器环境。若修改了依赖、Dockerfile 或 Compose 服务定义，则改用 `npm run docker:dev`。
 
 如需不使用 Docker 运行应用，复制 `.env.example` 为 `.env`，确保 PostgreSQL、S3 bucket 和
 Pi 配置已就绪，然后执行：
@@ -84,7 +129,7 @@ npm run dev
 
 1. 复制 `.env.production.example` 为宿主机上的 `.env.production`，填写所有空值并生成高强度
    PostgreSQL、MinIO 和 Better Auth 密钥。
-2. 创建 Pi 配置目录，并通过 `PI_CONFIG_DIR` 指向它；Compose 会只读挂载到应用容器。
+2. 创建仅 UID 1000 可读写的 Pi 配置目录，并通过 `PI_CONFIG_DIR` 指向它。
 3. 将 HTTPS 反向代理转发到 `DRAFTLY_PORT`，不要直接暴露 PostgreSQL 或 MinIO。
 4. 拉取镜像、执行 migration，再启动服务：
 

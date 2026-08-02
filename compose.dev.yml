@@ -15,6 +15,7 @@ x-app-environment: &app-environment
   S3_ACCESS_KEY_ID: draftly
   S3_SECRET_ACCESS_KEY: draftly-local-secret
   S3_FORCE_PATH_STYLE: "true"
+  NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org}
   DRAFTLY_WORKSPACES_DIR: /var/lib/draftly/workspaces
 
 services:
@@ -88,13 +89,15 @@ services:
       DRAFTLY_PI_PROVIDER: ${DRAFTLY_PI_PROVIDER:-}
       DRAFTLY_PI_MODEL: ${DRAFTLY_PI_MODEL:-}
       DRAFTLY_PI_THINKING: ${DRAFTLY_PI_THINKING:-medium}
+      PI_CODING_AGENT_DIR: /home/node/.pi/agent
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
     ports:
       - "4173:4173"
     volumes:
       - .:/app
       - node-modules-dev:/app/node_modules
       - workspace-dev:/var/lib/draftly/workspaces
-      - ${PI_CONFIG_DIR:-./.draftly/pi}:/home/node/.pi:ro
+      - ${PI_CONFIG_DIR:-./.draftly/pi}:/home/node/.pi
     depends_on:
       migrate:
         condition: service_completed_successfully

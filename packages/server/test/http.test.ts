@@ -112,6 +112,14 @@ test('serves an optional parsed DESIGN.md for drafts', async () => {
   };
   assert.match(design.content ?? '', /preview-test/);
   assert.equal(design.meta?.name, 'preview-test');
+  const previewResponse = await app.request(`/api/drafts/${withDesign.id}/preview`, {
+    method: 'POST',
+  });
+  assert.equal(previewResponse.status, 200);
+  assert.equal(
+    (await previewResponse.json() as { url: string }).url,
+    `/api/previews/${withDesign.id}/`,
+  );
 
   const withoutDesign = await drafts.createProject({ prompt: 'Without design' });
   const emptyResponse = await app.request(`/api/drafts/${withoutDesign.id}/design`);

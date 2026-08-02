@@ -1,11 +1,12 @@
-ARG NODE_IMAGE=crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/node:20-bookworm-slim
+ARG NODE_IMAGE=crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/node:24.18.1-bookworm-slim
 ARG PI_VERSION=0.83.0
 
 FROM ${NODE_IMAGE} AS dependencies
 ARG PI_VERSION
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates git \
+  && apt-get install -y --no-install-recommends ca-certificates fd-find git ripgrep \
+  && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
   && rm -rf /var/lib/apt/lists/* \
   && npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
 COPY package.json package-lock.json ./
@@ -39,7 +40,8 @@ ARG PI_VERSION
 ENV NODE_ENV=production
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates git \
+  && apt-get install -y --no-install-recommends ca-certificates fd-find git ripgrep \
+  && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
   && rm -rf /var/lib/apt/lists/* \
   && npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
 COPY --from=builder --chown=node:node /app/package.json /app/package-lock.json ./

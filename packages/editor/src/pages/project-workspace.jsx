@@ -111,7 +111,10 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
     const designResult = await designRequest;
     if (request !== draftLoadRef.current) return null;
     setCurrent(data);
-    setPreview(nextPreview);
+    setPreview({
+      ...nextPreview,
+      url: new URL(nextPreview.url, window.location.origin).toString(),
+    });
     setPickMode(false);
     setSelected(null);
     setDraftDesign(designResult.error

@@ -101,9 +101,11 @@ test('persists projects, roles, invitations, versions, and workspace snapshots',
     await withRequestAuth(auth(owner), async () => {
       const project = await projects.create({ prompt: 'Persistent project' });
       projectId = project.id;
+      assert.deepEqual(await projects.list(), []);
       const draft = await drafts.createProject({ prompt: project.prompt, projectId });
       draftId = draft.id;
       await projects.addDrafts(projectId, [draft.id]);
+      assert.equal((await projects.list()).length, 1);
       const saved = await drafts.runVersionTransaction(
         draft.id,
         { kind: 'iterate', instruction: 'persist this change' },

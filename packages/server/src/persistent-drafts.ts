@@ -229,6 +229,7 @@ export class PersistentDraftStore extends DraftStore {
         key: draft.objectKey,
         checksum: draft.objectChecksum,
       });
+      await this.ensureProjectDependencies(id);
       await fs.writeFile(this._metaPath(id), `${JSON.stringify(meta, null, 2)}\n`);
     }
     return meta;

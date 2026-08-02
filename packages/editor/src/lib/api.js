@@ -1,12 +1,31 @@
+const RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function api(path, opts = {}) {
   const hasBody = opts.body !== undefined;
-  const response = await fetch(path, {
-    method: opts.method || (hasBody ? "POST" : "GET"),
-    headers: hasBody ? { "Content-Type": "application/json" } : undefined,
-    body: hasBody ? JSON.stringify(opts.body) : undefined,
-    signal: opts.signal,
-    credentials: "same-origin",
-  });
+  const method = opts.method || (hasBody ? "POST" : "GET");
+  let response;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      response = await fetch(path, {
+        method,
+        headers: hasBody ? { "Content-Type": "application/json" } : undefined,
+        body: hasBody ? JSON.stringify(opts.body) : undefined,
+        signal: opts.signal,
+        credentials: "same-origin",
+      });
+    } catch (error) {
+      if (method !== "GET" || attempt === 2 || opts.signal?.aborted) throw error;
+      await wait(250 * (attempt + 1));
+      continue;
+    }
+    if (method !== "GET" || !RETRYABLE_STATUS.has(response.status) || attempt === 2) break;
+    await response.body?.cancel();
+    await wait(250 * (attempt + 1));
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.error || `${response.status}`);

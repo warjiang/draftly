@@ -171,7 +171,14 @@ export class WorkspaceManager {
   }
 
   async cleanup(): Promise<void> {
-    await removeIfExists(this.rootDir);
+    let entries: string[];
+    try {
+      entries = await fs.readdir(this.rootDir);
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    await Promise.all(entries.map((entry) => removeIfExists(path.join(this.rootDir, entry))));
   }
 
   private async matchesMarker(directory: string, expected: SnapshotMarker): Promise<boolean> {

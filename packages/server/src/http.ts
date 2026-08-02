@@ -380,7 +380,7 @@ export function createApiApp({
     const preview = await previews.ensure(id);
     return json(c, {
       ...preview,
-      url: new URL(`/api/previews/${encodeURIComponent(id)}/`, c.req.url).toString(),
+      url: `/api/previews/${encodeURIComponent(id)}/`,
     });
   });
 
