@@ -4,6 +4,7 @@ import {
   Clock3Icon,
   FilePlus2Icon,
   Layers3Icon,
+  UsersIcon,
   SparklesIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AccountMenu } from "@/components/account-menu";
 
 function DraftItem({ draft, index, active, onSelect }) {
   return (
@@ -41,10 +43,13 @@ export function AppHeader({
   current,
   drafts,
   sending,
+  user,
+  onSignOut,
   onSelectDraft,
   onHome,
   onNewProject,
   onHistory,
+  onMembers,
 }) {
   return (
     <header className="app-header">
@@ -92,6 +97,13 @@ export function AppHeader({
       </DropdownMenu>
 
       <div className="ml-auto flex items-center gap-2">
+        {project?.role === "viewer" ? <Badge variant="outline">只读</Badge> : null}
+        {project?.role === "owner" ? (
+          <Button variant="ghost" onClick={onMembers}>
+            <UsersIcon data-icon="inline-start" />
+            <span className="hidden sm:inline">成员</span>
+          </Button>
+        ) : null}
         <Button variant="ghost" disabled={!current} onClick={onHistory}>
           <Clock3Icon data-icon="inline-start" />
           <span className="hidden sm:inline">版本历史</span>
@@ -100,6 +112,7 @@ export function AppHeader({
           <FilePlus2Icon data-icon="inline-start" />
           新项目
         </Button>
+        <AccountMenu user={user} onSignOut={onSignOut} />
       </div>
     </header>
   );

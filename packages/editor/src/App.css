@@ -9,6 +9,55 @@
     var(--background);
 }
 
+.login-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 36%),
+    var(--background);
+}
+
+.login-card {
+  width: min(100%, 24rem);
+}
+
+.login-mark {
+  display: inline-flex;
+  size: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.account-trigger {
+  gap: 0.5rem;
+}
+
+.member-dialog {
+  max-width: 38rem;
+}
+
+.member-list {
+  max-height: 22rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow-y: auto;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem;
+  border-radius: var(--radius-lg);
+  background: var(--muted);
+}
+
 .skip-link {
   position: fixed;
   top: 0.75rem;

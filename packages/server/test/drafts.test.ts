@@ -12,6 +12,7 @@ import {
   iterateDraft,
 } from '../src/draft-generate.js';
 import { createApiApp } from '../src/http.js';
+import { createTestAuth } from './test-auth.js';
 import { migrateLegacyDrafts } from '../src/migration.js';
 import { runCommand } from '../src/process.js';
 import { sourceContextForLocator } from '../src/source-locator.js';
@@ -90,6 +91,51 @@ function locatorFor(source: string, token = '<h1'): SourceLocator {
     styles: { display: 'block' },
   };
 }
+
+test('uses the configured npm registry when installing generated project dependencies', async () => {
+  let npmArgs: string[] | undefined;
+  let npmOptions: CommandOptions | undefined;
+  let npmCalls = 0;
+  const store = new DraftStore({
+    rootDir: path.join(temporaryRoot, 'registry-store'),
+    npmRegistry: 'https://registry.npmmirror.com',
+    commandRunner: async (command, args, options) => {
+      if (command === 'npm') {
+        npmCalls += 1;
+        npmArgs = args;
+        npmOptions = options;
+        const modules = path.join(options!.cwd!, 'node_modules');
+        await fs.mkdir(modules, { recursive: true });
+        await fs.writeFile(path.join(modules, '.package-lock.json'), '{}');
+        return { stdout: '', stderr: '' };
+      }
+      return runCommand(command, args, options);
+    },
+  });
+
+  await store.createProject({ prompt: 'Registry test' });
+  assert.deepEqual(npmArgs, [
+    'install',
+    '--no-audit',
+    '--no-fund',
+    '--registry',
+    'https://registry.npmmirror.com',
+  ]);
+  assert.equal(typeof npmOptions?.onStdout, 'function');
+  assert.equal(typeof npmOptions?.onStderr, 'function');
+  assert.equal(npmCalls, 1);
+
+  await fs.rm(path.join(store.projectDir((await store.list())[0].id), 'node_modules'), {
+    recursive: true,
+    force: true,
+  });
+  const id = (await store.list())[0].id;
+  await Promise.all([
+    store.ensureProjectDependencies(id),
+    store.ensureProjectDependencies(id),
+  ]);
+  assert.equal(npmCalls, 2);
+});
 
 test('DraftStore creates an isolated React project and commits monotonic Git versions', async () => {
   const store = createStore('store');
@@ -341,6 +387,7 @@ test('HTTP source API streams progress, serves preview metadata, exports ZIP, an
     async shutdown() {},
   } satisfies PreviewManagerLike;
   const { app } = createApiApp({
+    auth: createTestAuth(),
     provider: executor,
     drafts: store,
     editorDir,
@@ -422,6 +469,7 @@ test('project API creates linked variants and validates imported DESIGN.md', asy
   await fs.mkdir(editorDir, { recursive: true });
   await fs.writeFile(path.join(editorDir, 'index.html'), '<div id="root"></div>');
   const { app } = createApiApp({
+    auth: createTestAuth(),
     provider: executor,
     drafts: store,
     projects,

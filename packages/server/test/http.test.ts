@@ -6,6 +6,7 @@ import path from 'node:path';
 import { defaultDesignMd } from '../../shared/src/design-md.js';
 import { DraftStore } from '../src/drafts.js';
 import { createApiApp } from '../src/http.js';
+import { createTestAuth } from './test-auth.js';
 
 let temporaryRoot: string;
 let app: ReturnType<typeof createApiApp>['app'];
@@ -23,6 +24,7 @@ before(async () => {
     installDependencies: false,
   });
   ({ app } = createApiApp({
+    auth: createTestAuth(),
     drafts,
     editorDir,
     provider: { runTask: async () => 'unused' },
@@ -65,6 +67,18 @@ test('serves template details and rejects an unknown template', async () => {
   assert.equal((await app.request('/api/templates/nope')).status, 404);
 });
 
+test('requires a session for business APIs while keeping health and templates public', async () => {
+  const anonymous = createApiApp({
+    auth: createTestAuth(null),
+    drafts,
+    provider: { runTask: async () => 'unused' },
+  }).app;
+  assert.equal((await anonymous.request('/api/me')).status, 401);
+  assert.equal((await anonymous.request('/api/projects')).status, 401);
+  assert.equal((await anonymous.request('/api/health/live')).status, 200);
+  assert.equal((await anonymous.request('/api/templates')).status, 200);
+});
+
 test('validates imported DESIGN.md before project generation', async () => {
   const invalid = await app.request('/api/designs/validate', {
     method: 'POST',
@@ -98,6 +112,14 @@ test('serves an optional parsed DESIGN.md for drafts', async () => {
   };
   assert.match(design.content ?? '', /preview-test/);
   assert.equal(design.meta?.name, 'preview-test');
+  const previewResponse = await app.request(`/api/drafts/${withDesign.id}/preview`, {
+    method: 'POST',
+  });
+  assert.equal(previewResponse.status, 200);
+  assert.equal(
+    (await previewResponse.json() as { url: string }).url,
+    `/api/previews/${withDesign.id}/`,
+  );
 
   const withoutDesign = await drafts.createProject({ prompt: 'Without design' });
   const emptyResponse = await app.request(`/api/drafts/${withoutDesign.id}/design`);

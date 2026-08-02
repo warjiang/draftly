@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/app-header";
 import { AppOverlays } from "@/components/app-overlays";
 import { ConversationPanel } from "@/components/conversation-panel";
+import { MemberDialog } from "@/components/member-dialog";
 import { PreviewStage } from "@/components/preview-stage";
 import { Button } from "@/components/ui/button";
 import { Toaster, toast } from "@/components/ui/toast";
@@ -26,7 +27,7 @@ function readImage(file, onLoad) {
   reader.readAsDataURL(file);
 }
 
-export function ProjectWorkspace({ projectId, onNavigate }) {
+export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
   const [project, setProject] = useState(null);
   const [drafts, setDrafts] = useState([]);
   const [current, setCurrent] = useState(null);
@@ -42,6 +43,7 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
   const [taskMode, setTaskMode] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const [rollbackVersion, setRollbackVersion] = useState(null);
   const [text, setText] = useState("");
   const [loadingProject, setLoadingProject] = useState(true);
@@ -54,6 +56,7 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
   const loadedPreviewOriginRef = useRef(null);
 
   const messages = useMemo(() => chatStore[activeKey] || [], [chatStore, activeKey]);
+  const readOnly = project?.role === "viewer";
   const versions = useMemo(() => current?.meta?.versions?.slice().reverse() || [], [current]);
   const sendingLabel = {
     image: "按截图修改中",
@@ -108,7 +111,10 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
     const designResult = await designRequest;
     if (request !== draftLoadRef.current) return null;
     setCurrent(data);
-    setPreview(nextPreview);
+    setPreview({
+      ...nextPreview,
+      url: new URL(nextPreview.url, window.location.origin).toString(),
+    });
     setPickMode(false);
     setSelected(null);
     setDraftDesign(designResult.error
@@ -123,10 +129,10 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
       const loaded = await loadDraftIntoView(id);
       if (!loaded || loaded.request !== draftLoadRef.current) return;
       setActiveKey(id);
-      const { project: updatedProject } = await api(`/api/projects/${encodeURIComponent(projectId)}`, {
+      const updatedProject = readOnly ? project : (await api(`/api/projects/${encodeURIComponent(projectId)}`, {
         method: "PATCH",
         body: { activeDraftId: id },
-      });
+      })).project;
       if (loaded.request !== draftLoadRef.current) return;
       setProject(updatedProject);
       if (announceLoaded && !hadChat) {
@@ -135,10 +141,10 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
     } catch (error) {
       toast.add({ title: "无法打开方案", description: error.message, type: "error" });
     }
-  }, [chatStore, loadDraftIntoView, projectId, pushMessage]);
+  }, [chatStore, loadDraftIntoView, project, projectId, pushMessage, readOnly]);
 
   const confirmRollback = useCallback(async () => {
-    if (!current || rollbackVersion === null) return;
+    if (!current || rollbackVersion === null || readOnly) return;
     const version = rollbackVersion;
     setRollbackVersion(null);
     try {
@@ -148,7 +154,7 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
     } catch (error) {
       toast.add({ title: "回退失败", description: error.message, type: "error" });
     }
-  }, [current, enterDraft, rollbackVersion]);
+  }, [current, enterDraft, readOnly, rollbackVersion]);
 
   const sendPreviewMessage = useCallback((message, origin = loadedPreviewOriginRef.current) => {
     if (!preview?.url || !origin || origin !== new URL(preview.url).origin) return;
@@ -178,7 +184,7 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
 
   const send = useCallback(async () => {
     const message = text.trim();
-    if (!message || sending) return;
+    if (!message || sending || readOnly) return;
 
     if (!current) return;
 
@@ -239,6 +245,7 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
     sending,
     text,
     updateProgress,
+    readOnly,
   ]);
 
   useEffect(() => {
@@ -358,10 +365,13 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
           current={current}
           drafts={drafts}
           sending={sending}
+          user={user}
+          onSignOut={onSignOut}
           onSelectDraft={enterDraft}
           onHome={() => onNavigate("/")}
           onNewProject={() => onNavigate("/")}
           onHistory={() => setHistoryOpen(true)}
+          onMembers={() => setMembersOpen(true)}
         />
         <main id="workspace-main" className="workspace-layout">
           <PreviewStage
@@ -384,6 +394,7 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
             onTogglePick={() => setPickMode((value) => !value)}
             onOpenSource={() => setSourceOpen(true)}
             onNewDraft={() => onNavigate("/")}
+            readOnly={readOnly}
           />
           <ConversationPanel
             current={current}
@@ -405,6 +416,7 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
             onRemoveSelected={() => setSelected(null)}
             onSend={send}
             onSelectVariant={enterDraft}
+            readOnly={readOnly}
           />
         </main>
 
@@ -430,7 +442,9 @@ export function ProjectWorkspace({ projectId, onNavigate }) {
           onRollbackRequest={setRollbackVersion}
           onRollbackCancel={() => setRollbackVersion(null)}
           onRollbackConfirm={confirmRollback}
+          canRollback={!readOnly}
         />
+        <MemberDialog projectId={projectId} open={membersOpen} onOpenChange={setMembersOpen} />
         <Toaster />
       </div>
     </TooltipProvider>

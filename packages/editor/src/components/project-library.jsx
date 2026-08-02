@@ -3,6 +3,7 @@ import { DesignThumbnail } from "@/components/design-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { filterProjects, groupProjectsByActivity } from "@/lib/projects";
 
 function relativeDate(value) {
@@ -17,7 +18,10 @@ function ProjectRow({ project, onOpen }) {
       <DesignThumbnail meta={project.design} compact />
       <span className="project-library-copy">
         <strong>{project.title}</strong>
-        <span>{project.variantCount} 个方案 · {relativeDate(project.updatedAt)}</span>
+        <span className="flex items-center gap-2">
+          {project.variantCount} 个方案 · {relativeDate(project.updatedAt)}
+          {project.role ? <Badge variant="outline">{project.role}</Badge> : null}
+        </span>
       </span>
     </Button>
   );
@@ -31,7 +35,7 @@ export function ProjectLibrary({ projects, query, loading, error, onQueryChange,
     <aside className="project-library" aria-label="项目库">
       <div className="project-library-tabs">
         <span className="active"><FolderOpenIcon />我的项目</span>
-        <span>本地工作区</span>
+        <span>协作项目</span>
       </div>
       <label className="project-search">
         <SearchIcon />

@@ -97,22 +97,27 @@ export class DraftStore {
   templateDir: string;
   run: CommandRunner;
   installDependencies: boolean;
+  npmRegistry?: string;
+  private dependencyInstalls = new Map<string, Promise<void>>();
 
   constructor({
     rootDir,
     templateDir = DEFAULT_TEMPLATE_DIR,
     commandRunner = runCommand,
     installDependencies = true,
+    npmRegistry = process.env.NPM_CONFIG_REGISTRY,
   }: {
     rootDir: string;
     templateDir?: string;
     commandRunner?: CommandRunner;
     installDependencies?: boolean;
+    npmRegistry?: string;
   }) {
     this.rootDir = path.resolve(rootDir);
     this.templateDir = path.resolve(templateDir);
     this.run = commandRunner;
     this.installDependencies = installDependencies;
+    this.npmRegistry = npmRegistry?.trim() || undefined;
   }
 
   _assertId(id: unknown): string {
@@ -158,10 +163,12 @@ export class DraftStore {
     prompt,
     designMd = null,
     onProgress,
+    projectId: _projectId,
   }: {
     prompt?: string;
     designMd?: string | null;
     onProgress?: ProgressHandler;
+    projectId?: string;
   } = {}): Promise<DraftMeta> {
     const id = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
     const draftDir = this._dir(id);
@@ -188,11 +195,7 @@ export class DraftStore {
       await writeJsonAtomic(this._metaPath(id), meta);
       onProgress?.({ type: 'pipeline', stage: 'scaffold_completed' });
 
-      if (this.installDependencies) {
-        onProgress?.({ type: 'pipeline', stage: 'dependencies_started' });
-        await this.run('npm', ['install', '--no-audit', '--no-fund'], { cwd: projectDir });
-        onProgress?.({ type: 'pipeline', stage: 'dependencies_completed' });
-      }
+      await this.ensureProjectDependencies(id, projectDir, onProgress);
 
       await this.run('git', ['init', '--quiet'], { cwd: projectDir });
       await this.run('git', ['config', 'user.name', 'Draftly'], { cwd: projectDir });
@@ -208,6 +211,36 @@ export class DraftStore {
       await fs.rm(draftDir, { recursive: true, force: true });
       throw error;
     }
+  }
+
+  async ensureProjectDependencies(
+    id: string,
+    projectDir = this.projectDir(id),
+    onProgress?: ProgressHandler,
+  ): Promise<void> {
+    if (!this.installDependencies) return;
+    try {
+      await fs.access(path.join(projectDir, 'node_modules', '.package-lock.json'));
+      return;
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+
+    const existing = this.dependencyInstalls.get(id);
+    if (existing) return existing;
+    const install = (async () => {
+      onProgress?.({ type: 'pipeline', stage: 'dependencies_started' });
+      const args = ['install', '--no-audit', '--no-fund'];
+      if (this.npmRegistry) args.push('--registry', this.npmRegistry);
+      await this.run('npm', args, {
+        cwd: projectDir,
+        onStdout: (text) => process.stdout.write(`[draft:${id}:npm] ${text}`),
+        onStderr: (text) => process.stderr.write(`[draft:${id}:npm] ${text}`),
+      });
+      onProgress?.({ type: 'pipeline', stage: 'dependencies_completed' });
+    })().finally(() => this.dependencyInstalls.delete(id));
+    this.dependencyInstalls.set(id, install);
+    return install;
   }
 
   async remove(id: unknown): Promise<void> {

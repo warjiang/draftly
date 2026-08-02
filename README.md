@@ -1,148 +1,216 @@
-# draftly
+# Draftly
 
-Draftly 是一个本地运行的 AI 源码原型工具。输入页面需求后，Pi 会在独立工作目录中生成
-Vite + React + TypeScript + Tailwind CSS + shadcn/ui 项目。页面通过受控 Vite dev
-server 实时预览，并支持整页迭代、源码级点选修改、截图修改、Git 版本回退和源码 ZIP 导出。
-本地 API 使用 Hono + TypeScript，并通过 Hono Node.js adapter 运行。
+Draftly 是一个支持多人协作的 AI 源码原型服务。用户通过 GitHub 登录，Pi 在隔离工作区中生成
+Vite + React + TypeScript + Tailwind CSS + shadcn/ui 项目，并支持实时预览、源码修改、Git
+版本回退和 ZIP 导出。
 
-生产链路只使用本机已认证的 Pi CLI，不包含 Mock 页面或 HTML 字符串回退。
+PostgreSQL 保存账号、会话、项目、版本和成员关系，S3 兼容对象存储保存包含 `.git` 的工作区
+快照。项目成员分为 Owner、Editor 和 Viewer；Owner 可以按 GitHub 用户名邀请协作者。
 
-## 环境要求
+## 所需镜像
 
-- Node.js 20+
-- npm 10+
-- 已安装并认证的 Pi CLI
-- Git
+开发和生产环境只使用以下私有基础镜像：
 
-```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-pi
-# 在 Pi 中完成 /login 后退出
+```text
+crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/node:24.18.1-bookworm-slim
+crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/postgres:17.6-bookworm
+crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-minio:RELEASE.2025-04-22T22-12-26Z
+crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/minio-mc:RELEASE.2025-04-16T18-13-26Z
 ```
 
-## 本地运行
+应用镜像发布到：
+
+```text
+crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com/warjiang/draftly:<tag>
+```
+
+应用镜像已预装 Pi CLI、Git、`fd` 和 `ripgrep`，运行时不需要再下载 Pi 的搜索工具。
+
+运行 Compose 前先登录私有仓库：
+
+```bash
+docker login crpi-a01fov5fxhl285uu.cn-shanghai.personal.cr.aliyuncs.com
+```
+
+## GitHub OAuth
+
+创建 GitHub OAuth App，并配置：
+
+| 环境 | Homepage URL | Authorization callback URL |
+| --- | --- | --- |
+| 本地 | `http://127.0.0.1:4173` | `http://127.0.0.1:4173/api/auth/callback/github` |
+| 生产 | `https://<domain>` | `https://<domain>/api/auth/callback/github` |
+
+将 OAuth App 的 Client ID 和 Client Secret 分别写入 `GITHUB_CLIENT_ID` 和
+`GITHUB_CLIENT_SECRET`。生产环境的 `BETTER_AUTH_URL` 必须是浏览器访问的 HTTPS 根地址。
+
+## Docker Compose 本地开发
+
+要求 Docker Engine 及 Compose v2。先认证 Pi CLI，并准备只读挂载目录：
+
+```bash
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.83.0
+pi
+mkdir -p .draftly/pi
+# 将已认证的 Pi 配置放入 .draftly/pi，或通过 PI_CONFIG_DIR 指向可写目录
+```
+
+`DRAFTLY_PI_PROVIDER` 和 `DRAFTLY_PI_MODEL` 只负责选择模型，不包含认证信息。使用内置的
+Kimi For Coding 时，还需要在 `.env` 中配置：
+
+```dotenv
+DRAFTLY_PI_PROVIDER=kimi-coding
+DRAFTLY_PI_MODEL=k3
+KIMI_API_KEY=<your-kimi-api-key>
+```
+
+也可以在宿主机运行 `pi` 并通过 `/login` 登录，然后将生成的 `~/.pi/agent/` 复制到
+`${PI_CONFIG_DIR}/agent/`。开发和生产容器都固定通过
+`PI_CODING_AGENT_DIR=/home/node/.pi/agent` 读取该目录。该挂载必须可写，因为 Pi 会维护
+model catalog、trust 状态并刷新凭据。生产宿主机应将目录权限限制为运行容器的 UID 1000：
+
+```bash
+sudo install -d -m 700 -o 1000 -g 1000 /opt/draftly/secrets/pi
+```
+
+可用以下命令确认凭据与模型：
+
+```bash
+docker compose -f compose.dev.yml exec app pi --list-models kimi-coding
+```
+
+启动完整开发环境：
+
+```bash
+export GITHUB_CLIENT_ID=<github-client-id>
+export GITHUB_CLIENT_SECRET=<github-client-secret>
+export PI_CONFIG_DIR="$PWD/.draftly/pi"
+npm run docker:dev
+```
+
+打开 <http://127.0.0.1:4173>。开发 Compose 会启动应用、PostgreSQL、MinIO，创建 `draftly`
+bucket 并执行数据库 migration。容器会在后台持续运行；源码以 bind mount 注入，编辑器使用
+Vite HMR，服务端使用 `tsx watch`，保存代码后无需重启 Compose。PostgreSQL 位于
+`127.0.0.1:5432`，MinIO API/Console 位于 `127.0.0.1:9000/9001`。需要查看日志时执行
+`npm run docker:dev:logs`。
+
+生成项目时的 `npm install` 默认使用 npm 官方 registry。网络受限时可在 `.env`、
+`.env.production` 或启动命令中设置，例如：
+
+```dotenv
+NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+```
+
+依赖安装的 stdout/stderr 会以 `[draft:<id>:npm]` 前缀实时写入应用日志，可通过
+`npm run docker:dev:logs` 查看。
+
+```bash
+npm run docker:dev        # 首次启动，或依赖/Dockerfile 变化后重建
+npm run docker:dev:logs   # 跟踪应用日志，Ctrl-C 不会停止容器
+npm run docker:dev:reload # 修改 .env 后重新创建 app 容器，不重建镜像
+npm run docker:dev:down   # 停止容器，保留数据
+npm run docker:dev:reset  # 停止容器并删除开发 volumes，会清空所有本地数据
+```
+
+`.env` 由 Docker Compose 在创建容器时读取，不支持热重载；修改后执行
+`npm run docker:dev:reload`。不要使用 `docker compose restart app`，因为 restart 会继续使用
+旧容器环境。若修改了依赖、Dockerfile 或 Compose 服务定义，则改用 `npm run docker:dev`。
+
+如需不使用 Docker 运行应用，复制 `.env.example` 为 `.env`，确保 PostgreSQL、S3 bucket 和
+Pi 配置已就绪，然后执行：
 
 ```bash
 npm install
+npm run db:migrate
 npm run dev
 ```
 
-打开 <http://127.0.0.1:4173>。运行时草稿存放在 `.draftly/drafts/`。
+## 生产部署
 
-可在根目录 `.env` 中覆盖：
-
-```dotenv
-HOST=127.0.0.1
-PORT=4173
-DRAFTLY_DRAFTS_DIR=.draftly/drafts
-DRAFTLY_PROJECTS_DIR=.draftly/projects
-DRAFTLY_PI_COMMAND=pi
-DRAFTLY_PI_PROVIDER=anthropic
-DRAFTLY_PI_MODEL=claude-sonnet-4-20250514
-DRAFTLY_PI_THINKING=medium
-```
-
-Pi 未安装、未认证、源码任务失败或项目构建失败时，操作会明确失败并恢复任务前的 Git
-工作树，不会生成假草稿。
-
-## 项目与源码方案结构
-
-```text
-.draftly/
-├── projects/
-│   └── <project-id>.json       # 项目、DESIGN.md 与方案关联
-└── drafts/
-    └── <draft-id>/
-        ├── meta.json           # 单个视觉方案 metadata
-        └── project/
-            ├── .git/
-            ├── DESIGN.md
-            ├── package.json
-            ├── components.json
-            ├── vite.config.ts
-            └── src/
-```
-
-首页 `/` 用于搜索项目、切换内置 DESIGN.md 或导入本地 DESIGN.md 并创建项目；项目工作区
-位于 `/projects/:id`。一个项目可以包含多个视觉方案，每个方案仍是独立、可运行的 React
-工程。每次成功的生成或修改对应一个 Git commit。`meta.json` 保存用户可见版本号与 commit
-的映射。回退不会删除历史，而是恢复目标 commit 的文件树后创建新的 rollback commit。
-
-## 点选修改
-
-草稿模板在 Vite 开发模式中通过 `@locator/babel-jsx` 注入 JSX 源位置。iframe 内的
-inspect bridge 负责 hover/click，并通过 `postMessage` 返回源文件、行列、组件名和 DOM
-摘要。服务端使用 TSX AST 提取目标 JSX、所属组件和 imports，再让 Pi 在完整项目上下文中
-修改真实源码。
-
-该流程不使用 `srcdoc`、`data-did` 或 HTML 字符串替换。
-
-## 旧 HTML 草稿迁移
-
-迁移前建议备份 `.draftly/drafts`，然后执行：
+1. 复制 `.env.production.example` 为宿主机上的 `.env.production`，填写所有空值并生成高强度
+   PostgreSQL、MinIO 和 Better Auth 密钥。
+2. 创建仅 UID 1000 可读写的 Pi 配置目录，并通过 `PI_CONFIG_DIR` 指向它。
+3. 将 HTTPS 反向代理转发到 `DRAFTLY_PORT`，不要直接暴露 PostgreSQL 或 MinIO。
+4. 拉取镜像、执行 migration，再启动服务：
 
 ```bash
-npm run migrate:drafts
+docker compose --env-file .env.production -f compose.prod.yml config
+docker compose --env-file .env.production -f compose.prod.yml pull
+docker compose --env-file .env.production -f compose.prod.yml run --rm migrate
+docker compose --env-file .env.production -f compose.prod.yml up -d --remove-orphans
+curl --fail https://<domain>/api/health/ready
 ```
 
-命令逐个读取旧草稿的最新 `vN.html`，让 Pi 转换为 React 源码并运行 build。成功后创建独立
-Git 仓库，原 HTML 与旧 meta 保存在草稿内的 `legacy-backup/`。迁移幂等；已迁移项会跳过，
-单项失败不会阻塞其他草稿，可修复后重试。
+生产应用以非 root 用户运行，根文件系统只读；PostgreSQL 和 MinIO 仅连接内部网络。应用端口是
+唯一发布的端口。`/api/health/live` 检查进程存活，`/api/health/ready` 检查数据库和对象存储。
+
+升级时修改 `DRAFTLY_IMAGE_TAG` 为不可变的 `sha-*` tag，并重复 pull、migration、up 和健康检查。
+应用回滚只需恢复旧 tag 后重新部署；数据库 migration 不自动回滚，因此 migration 必须保持
+向后兼容。日志可通过以下命令查看：
+
+```bash
+docker compose --env-file .env.production -f compose.prod.yml logs -f app
+```
+
+### 备份与恢复
+
+数据库和 MinIO 必须同时备份。下列命令在部署目录执行：
+
+```bash
+# PostgreSQL 备份
+docker compose --env-file .env.production -f compose.prod.yml exec -T postgres \
+  pg_dump -U draftly -d draftly -Fc > draftly-postgres.dump
+
+# PostgreSQL 恢复到空数据库
+docker compose --env-file .env.production -f compose.prod.yml exec -T postgres \
+  pg_restore --clean --if-exists -U draftly -d draftly < draftly-postgres.dump
+
+# MinIO bucket 备份/恢复（宿主机需安装 mc）
+mc mirror --overwrite <production-alias>/draftly ./draftly-bucket-backup
+mc mirror --overwrite ./draftly-bucket-backup <production-alias>/draftly
+```
+
+恢复时应使用同一备份时间点的数据库和 bucket。`workspace-cache` volume 可安全重建，不需要备份。
+
+## GitHub Actions
+
+- `ci.yml`：构建、测试、PostgreSQL/MinIO 集成验证及生产镜像构建。
+- `image.yml`：CI 成功后发布 `linux/amd64`、`linux/arm64` 的 SHA/edge 镜像；版本 tag 发布
+  semver/latest，并生成 SBOM 和 provenance。
+- `deploy.yml`：输入不可变镜像 tag，经 `production` Environment 审批后通过 SSH 部署。
+
+仓库需要配置以下 Actions secrets：
+
+```text
+ALIYUN_REGISTRY_USERNAME
+ALIYUN_REGISTRY_PASSWORD
+DEPLOY_HOST
+DEPLOY_USER
+DEPLOY_PATH
+DEPLOY_SSH_KEY
+DEPLOY_KNOWN_HOSTS
+PRODUCTION_ENV
+```
+
+`PRODUCTION_ENV` 是不含 `DRAFTLY_IMAGE_TAG` 的完整生产 env 内容。建议保护 `main` 分支并要求
+CI 通过，同时为 `production` Environment 配置人工审批。
 
 ## 常用命令
 
 ```bash
-npm run dev             # 构建编辑器并启动本地服务
-npm run build           # 构建服务端、编辑器和源码草稿模板
-npm test                # 运行全部测试
-npm run smoke           # 真实模板/预览/定位/Git/ZIP 冒烟
-npm run migrate:drafts  # 迁移旧 HTML 草稿
-npm run check           # build + test + smoke
+npm run build
+npm test
+npm run smoke
+npm run db:generate
+npm run db:migrate
+npm run db:studio
+npm run docker:prod:config
 ```
 
-## API
+## 权限与安全边界
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/api/projects` | 按最近活动返回项目摘要 |
-| GET | `/api/projects/:id` | 返回项目、DESIGN.md 与方案列表 |
-| POST | `/api/projects/generate` | 创建项目并生成方案 `{prompt, variants?, templateId? / designMd?}` |
-| PATCH | `/api/projects/:id` | 更新项目标题或当前方案 |
-| POST | `/api/drafts/generate` | 生成源码草稿 `{prompt, variants?, style?}` |
-| GET | `/api/drafts` | 草稿列表 |
-| GET | `/api/drafts/:id` | 草稿 metadata、当前版本和默认入口源码 |
-| GET | `/api/drafts/:id/files` | 列出可浏览的项目源码文件；排除依赖、构建产物和敏感配置 |
-| GET | `/api/drafts/:id/source?file=src/App.tsx` | 读取受限项目源码 |
-| POST | `/api/drafts/:id/preview` | 启动/复用 Vite 预览 |
-| POST | `/api/drafts/:id/iterate` | 整页源码迭代 `{instruction}` |
-| POST | `/api/drafts/:id/edit-source` | 点选修改 `{locator, instruction}` |
-| POST | `/api/drafts/:id/edit-by-image` | 截图修改 `{image, instruction}` |
-| POST | `/api/drafts/:id/rollback` | 基于旧版本创建回退 commit `{v}` |
-| GET | `/api/drafts/:id/versions/:v/diff` | 查看版本 Git diff |
-| GET | `/api/drafts/:id/export` | 下载源码 ZIP |
-| GET | `/api/templates` | 风格预设列表 |
-| GET | `/api/templates/:id` | 风格预设详情 |
-| POST | `/api/designs/validate` | 校验导入的 DESIGN.md 并返回解析后 token |
-| POST | `/api/extract` | 从 `{html, css}` 或 `{url}` 提取设计系统 |
-
-生成、迭代、点选、截图和回退接口可追加 `?stream=1`，以 NDJSON 依次返回 scaffold、依赖
-安装、Pi read/edit/write/bash、构建、Git commit 和 preview 等过程事件。
-
-## Monorepo
-
-```text
-packages/
-├── draft-template/  生成项目的 Vite/React/TS/Tailwind/shadcn 模板与 inspect bridge
-├── editor/          Draftly React 编辑器
-├── server/          Hono/TypeScript API、Pi workspace、Git 存储、预览进程与迁移
-└── shared/          DESIGN.md 解析与校验
-scripts/
-└── smoke-draft.ts   源码草稿全链路冒烟
-```
-
-## 安全边界
-
-- 草稿路径、源码读取和导出限制在对应 `project/` 内，并拒绝 symlink 越界。
-- Vite dev server 仅绑定 `127.0.0.1`，按草稿懒启动并回收。
-- Pi 具有草稿 cwd 下的 `read/edit/write/bash` 工具。cwd 不是操作系统级沙箱；只应在可信的
-  本地环境运行 Draftly。
+- Owner 可编辑项目并管理成员和邀请；Editor 可编辑项目；Viewer 只能读取、预览和导出。
+- 所有 draft 权限都通过其所属项目解析，非成员无法探测资源是否存在。
+- 工作区快照拒绝绝对路径、路径穿越、符号/硬链接、超限文件数和超限展开体积。
+- 对象存储凭证只存在于服务端，浏览器不会获得 bucket 权限。
+- Pi 具有工作区内的源码读写和命令执行能力，但容器不是针对恶意生成代码的完整安全沙箱。

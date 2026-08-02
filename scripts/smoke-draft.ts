@@ -7,6 +7,7 @@ import path from 'node:path';
 import { serve } from '@hono/node-server';
 import { createApiApp } from '../packages/server/src/http.js';
 import { DraftStore } from '../packages/server/src/drafts.js';
+import { createTestAuth } from '../packages/server/test/test-auth.js';
 import type {
   PiTaskOptions,
   SourceLocator,
@@ -29,7 +30,7 @@ const provider: WorkspaceProvider = {
     return `Smoke task ${taskCount}`;
   },
 };
-const { app, previewManager } = createApiApp({ provider, drafts });
+const { app, previewManager } = createApiApp({ auth: createTestAuth(), provider, drafts });
 let server!: Server;
 const address = await new Promise<AddressInfo>((resolve) => {
   server = serve({
@@ -83,8 +84,9 @@ try {
   }
 
   const preview = await post<{ url: string }>(`/api/drafts/${id}/preview`, {});
-  const previewHtml = await fetch(preview.url).then((response) => response.text());
-  const transformedSource = await fetch(new URL('/src/App.tsx', preview.url)).then((response) => response.text());
+  const previewUrl = new URL(preview.url, base);
+  const previewHtml = await fetch(previewUrl).then((response) => response.text());
+  const transformedSource = await fetch(new URL('src/App.tsx', previewUrl)).then((response) => response.text());
   if (!previewHtml.includes('id="root"') || !transformedSource.includes('data-locatorjs-id')) {
     throw new Error('managed Vite preview or locator transform is unavailable');
   }
@@ -107,7 +109,8 @@ try {
   console.log('SMOKE PASS: source generation, Vite preview, locator edit, Git rollback, ZIP export');
 } catch (error: unknown) {
   failed = true;
-  console.error(`SMOKE FAIL: ${error instanceof Error ? error.message : String(error)}`);
+  console.error(`SMOKE FAIL: ${error instanceof Error ? error.stack : String(error)}`);
+  if (error instanceof Error && error.cause) console.error('Caused by:', error.cause);
 } finally {
   await previewManager.shutdown();
   await new Promise((resolve) => server.close(resolve));

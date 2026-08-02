@@ -29,6 +29,7 @@ export function AppOverlays({
   onRollbackRequest,
   onRollbackCancel,
   onRollbackConfirm,
+  canRollback = true,
 }) {
   return (
     <>
@@ -49,7 +50,7 @@ export function AppOverlays({
                         <span className="version-number">v{version.v}</span>
                         {active ? <Badge variant="secondary">当前</Badge> : null}
                       </div>
-                      {!active ? (
+                      {!active && canRollback ? (
                         <Button size="sm" variant="ghost" onClick={() => onRollbackRequest(version.v)}>
                           <RotateCcwIcon data-icon="inline-start" />
                           回退

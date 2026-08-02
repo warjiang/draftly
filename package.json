@@ -7,13 +7,22 @@
     "packages/*"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
-    "dev": "npm run build --workspace @draftly/editor && npm run dev --workspace @draftly/server",
+    "dev": "node scripts/dev.mjs",
     "start": "npm run build --workspace @draftly/editor && npm run build --workspace @draftly/server && npm run start --workspace @draftly/server",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "db:generate": "npm run db:generate --workspace @draftly/server",
+    "db:migrate": "npm run db:migrate --workspace @draftly/server",
+    "db:studio": "npm run db:studio --workspace @draftly/server",
+    "docker:dev": "docker compose -f compose.dev.yml up --build -d --wait",
+    "docker:dev:logs": "docker compose -f compose.dev.yml logs -f app",
+    "docker:dev:reload": "docker compose -f compose.dev.yml up -d --no-deps --force-recreate --wait app",
+    "docker:dev:down": "docker compose -f compose.dev.yml down",
+    "docker:dev:reset": "docker compose -f compose.dev.yml down --volumes",
+    "docker:prod:config": "docker compose --env-file .env.production -f compose.prod.yml config",
     "migrate:drafts": "tsx packages/server/src/migrate-drafts.ts",
     "smoke": "tsx scripts/smoke-draft.ts",
     "check": "npm run build && npm test && npm run smoke"

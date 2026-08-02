@@ -121,6 +121,7 @@ export type ProjectMeta = {
   activeDraftId: string | null;
   createdAt: string;
   updatedAt: string;
+  role?: 'owner' | 'editor' | 'viewer';
 };
 
 export type SourceLocator = {

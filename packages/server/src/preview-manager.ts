@@ -108,9 +108,21 @@ export class PreviewManager implements PreviewManagerLike {
     const url = `http://${this.host}:${port}/`;
     const child = spawn(
       'npm',
-      ['run', 'dev', '--', '--host', this.host, '--port', String(port), '--strictPort'],
+      [
+        'run',
+        'dev',
+        '--',
+        '--host',
+        this.host,
+        '--port',
+        String(port),
+        '--strictPort',
+        '--base',
+        `/api/previews/${encodeURIComponent(id)}/`,
+      ],
       {
         cwd: this.drafts.projectDir(id),
+        detached: process.platform !== 'win32',
         env: { ...process.env, BABEL_ENV: 'development' },
         stdio: ['pipe', 'pipe', 'pipe'],
       },
@@ -183,15 +195,27 @@ export class PreviewManager implements PreviewManagerLike {
   async terminate(child: ChildProcessWithoutNullStreams | undefined): Promise<void> {
     if (!child || child.exitCode !== null) return;
     await new Promise<void>((resolve) => {
+      const kill = (signal: NodeJS.Signals) => {
+        if (child.exitCode !== null) return;
+        if (process.platform === 'win32' || child.pid === undefined) {
+          child.kill(signal);
+          return;
+        }
+        try {
+          process.kill(-child.pid, signal);
+        } catch (error: unknown) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') child.kill(signal);
+        }
+      };
       const timeout = setTimeout(() => {
-        if (child.exitCode === null) child.kill('SIGKILL');
+        kill('SIGKILL');
       }, 2_000);
       timeout.unref();
       child.once('exit', () => {
         clearTimeout(timeout);
         resolve();
       });
-      child.kill('SIGTERM');
+      kill('SIGTERM');
     });
   }
 
