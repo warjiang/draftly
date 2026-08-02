@@ -8,6 +8,7 @@ import { installCrashGuards } from './crash-guard.js';
 import { assertDatabaseReady, createDatabase } from './db/client.js';
 import { DraftStore } from './drafts.js';
 import { DatabaseProjectStore } from './db-projects.js';
+import { ConversationStore } from './db-conversations.js';
 import { createApiApp } from './http.js';
 import { loadEnv } from './load-env.js';
 import { resolveDraftsDir } from './paths.js';
@@ -34,6 +35,7 @@ const objects = new S3ObjectStore(config.s3);
 await objects.assertReady();
 const workspaces = new WorkspaceManager({ rootDir: config.workspacesDir, objects });
 const projects = new DatabaseProjectStore(database.db);
+const conversations = new ConversationStore(database.db, projects);
 const drafts = new PersistentDraftStore({
   rootDir: config.workspacesDir,
   database: database.db,
@@ -47,6 +49,7 @@ const { app, previewManager } = createApiApp({
   provider: createPiHarnessProvider(),
   drafts,
   projects,
+  conversations,
   readiness: async () => {
     await assertDatabaseReady(database.db);
     await objects.assertReady();

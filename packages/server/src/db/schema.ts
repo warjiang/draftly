@@ -178,5 +178,29 @@ export const storedObjects = pgTable('stored_objects', {
   index('stored_objects_status_idx').on(table.status),
 ]);
 
+export const conversations = pgTable('conversations', {
+  id: text('id').primaryKey(),
+  draftId: text('draft_id').notNull().references(() => drafts.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  createdBy: text('created_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  ...timestamps,
+}, (table) => [
+  index('conversations_draft_id_idx').on(table.draftId),
+  index('conversations_draft_updated_idx').on(table.draftId, table.updatedAt),
+]);
+
+export const conversationMessages = pgTable('conversation_messages', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id').notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  seq: integer('seq').notNull(),
+  role: text('role').notNull(),
+  data: jsonb('data').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('conversation_messages_seq_unique').on(table.conversationId, table.seq),
+  index('conversation_messages_conversation_id_idx').on(table.conversationId),
+]);
+
 export type ProjectRole = typeof projectRole.enumValues[number];
 export type InvitationStatus = typeof invitationStatus.enumValues[number];

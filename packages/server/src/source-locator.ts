@@ -9,6 +9,37 @@ import type { ErrorWithStatus, SourceLocator } from './types.js';
 const traverse = traverseModule;
 type JSXNodePath = NodePath<t.JSXElement> | NodePath<t.JSXFragment>;
 
+export function parseSource(source: string) {
+  return parse(source, {
+    sourceType: 'module',
+    plugins: ['jsx', 'typescript'],
+    errorRecovery: false,
+  });
+}
+
+export function findSmallestJsxAt(
+  ast: ReturnType<typeof parse>,
+  line: number,
+  column: number,
+): JSXNodePath | null {
+  let selected: JSXNodePath | null = null;
+  const consider = (path: JSXNodePath) => {
+    if (!contains(path.node, line, column)) return;
+    if (!selected || nodeLength(path.node) < nodeLength(selected.node)) {
+      selected = path;
+    }
+  };
+  traverse(ast, {
+    JSXElement(path) {
+      consider(path);
+    },
+    JSXFragment(path) {
+      consider(path);
+    },
+  });
+  return selected;
+}
+
 function contains(node: t.Node, line: number, column: number): boolean {
   if (!node.loc) return false;
   const startsBefore = node.loc.start.line < line
@@ -56,32 +87,9 @@ export async function sourceContextForLocator({
   }
   const sourceResult = await drafts.readSource(id, locator.file);
   const source = sourceResult.source;
-  const ast = parse(source, {
-    sourceType: 'module',
-    plugins: ['jsx', 'typescript'],
-    errorRecovery: false,
-  });
-  const match: {
-    selected: JSXNodePath | null;
-    owner: NodePath | null;
-  } = { selected: null, owner: null };
-  traverse(ast, {
-    JSXElement(path) {
-      if (!contains(path.node, locator.line, locator.column)) return;
-      if (!match.selected || nodeLength(path.node) < nodeLength(match.selected.node)) {
-        match.selected = path;
-        match.owner = componentPath(path);
-      }
-    },
-    JSXFragment(path) {
-      if (!contains(path.node, locator.line, locator.column)) return;
-      if (!match.selected || nodeLength(path.node) < nodeLength(match.selected.node)) {
-        match.selected = path;
-        match.owner = componentPath(path);
-      }
-    },
-  });
-  const { selected, owner } = match;
+  const ast = parseSource(source);
+  const selected = findSmallestJsxAt(ast, locator.line, locator.column);
+  const owner = selected ? componentPath(selected) : null;
   if (!selected) {
     const error = new Error(
       `source element not found at ${locator.file}:${locator.line}:${locator.column}`,

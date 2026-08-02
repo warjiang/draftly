@@ -1,17 +1,47 @@
 import {
   ArrowUpIcon,
   CheckIcon,
+  ChevronDownIcon,
   CircleAlertIcon,
   ImageIcon,
+  MessageSquarePlusIcon,
   MousePointer2Icon,
+  PaletteIcon,
   PaperclipIcon,
+  PencilIcon,
   SparklesIcon,
+  Trash2Icon,
   XIcon,
 } from "lucide-react";
+import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
@@ -19,6 +49,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { groupProgressSteps } from "@/lib/progress";
+import { countStyleEdits, sameAnnotation } from "@/lib/annotations";
 
 function ProgressTree({ steps }) {
   return (
@@ -40,12 +71,16 @@ function ProgressTree({ steps }) {
                 {children.length ? (
                   <div className="progress-children">
                     {children.map((child) => (
-                      <div key={child.key} className={cn("progress-step progress-child", child.status)}>
+                      <div key={child.key} className={cn("progress-step progress-child", child.tool && "progress-call", child.status)}>
                         <span className="progress-icon">
                           {child.status === "done" ? <CheckIcon /> : <span className="progress-dot" />}
                         </span>
                         <span className="progress-label">{child.label}</span>
-                        {child.detail ? <span className="progress-detail">{child.detail}</span> : null}
+                        {child.detail ? (
+                          child.tool
+                            ? <code className="progress-target" title={child.detail}>{child.detail}</code>
+                            : <span className="progress-detail">{child.detail}</span>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -59,11 +94,22 @@ function ProgressTree({ steps }) {
   );
 }
 
-function SystemMessage({ text }) {
+function SystemMessage({ message, onDismiss }) {
   return (
-    <div className="system-message">
+    <div className={cn("system-message", message.dismissible && "system-message-dismissible")}>
       <SparklesIcon />
-      <span>{text}</span>
+      <span>{message.text}</span>
+      {message.dismissible && onDismiss ? (
+        <button
+          type="button"
+          className="system-message-close"
+          aria-label="关闭提示"
+          title="关闭提示"
+          onClick={() => onDismiss(message)}
+        >
+          <XIcon />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -79,7 +125,6 @@ function UserMessage({ message }) {
             {locators.map((loc, index) => (
               <div className="message-annotation" key={`${loc.file}:${loc.line}:${loc.column}:${index}`}>
                 <span className="message-annotation-target">
-                  <MousePointer2Icon />
                   {loc.component || loc.tagName} · {loc.file}:{loc.line}
                 </span>
                 {loc.comment?.trim() ? (
@@ -109,43 +154,45 @@ function AssistantMessage({ message, onSelectVariant }) {
     );
   }
 
+  const pending = message.kind === "pending";
+  const hasSteps = Boolean(message.steps?.length);
+
   return (
     <div className="message-row message-assistant">
-      <Card size="sm" className="assistant-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {message.kind === "pending" ? <Spinner /> : <SparklesIcon />}
+      <div className="assistant-trace">
+        {pending ? (
+          <div className="assistant-trace-head">
+            <Spinner />
             <span>{message.text.replace(/^✓\s*/, "")}</span>
-            {message.kind === "pending" ? <Badge variant="secondary">运行中</Badge> : null}
-          </CardTitle>
-        </CardHeader>
-        {message.steps?.length || message.variants?.length ? (
-          <CardContent className="flex flex-col gap-3">
-            {message.steps?.length ? <ProgressTree steps={message.steps} /> : null}
-            {message.variants?.length ? (
-              <div className="variant-list">
-                {message.variants.map((variant) => (
-                  <Button
-                    key={variant.id}
-                    variant={variant.chosen ? "default" : "outline"}
-                    className="justify-start"
-                    onClick={() => onSelectVariant(variant.id)}
-                  >
-                    {message.variants.length > 1 ? `方案 ${variant.index}` : null}
-                    <span className="truncate text-left">{variant.title}</span>
-                  </Button>
-                ))}
-              </div>
-            ) : null}
-          </CardContent>
+            <Badge variant="secondary">运行中</Badge>
+          </div>
         ) : null}
-      </Card>
+        {hasSteps ? <ProgressTree steps={message.steps} /> : null}
+        {!pending && !hasSteps ? (
+          <div className="assistant-trace-note">{message.text.replace(/^✓\s*/, "")}</div>
+        ) : null}
+        {message.variants?.length ? (
+          <div className="variant-list">
+            {message.variants.map((variant) => (
+              <Button
+                key={variant.id}
+                variant={variant.chosen ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => onSelectVariant(variant.id)}
+              >
+                {message.variants.length > 1 ? `方案 ${variant.index}` : null}
+                <span className="truncate text-left">{variant.title}</span>
+              </Button>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function ConversationMessage({ message, onSelectVariant }) {
-  if (message.role === "system") return <SystemMessage text={message.text} />;
+function ConversationMessage({ message, onSelectVariant, onDismiss }) {
+  if (message.role === "system") return <SystemMessage message={message} onDismiss={onDismiss} />;
   if (message.role === "user") return <UserMessage message={message} />;
   return <AssistantMessage message={message} onSelectVariant={onSelectVariant} />;
 }
@@ -160,14 +207,198 @@ function ContextChip({ icon: Icon, children, onRemove }) {
   );
 }
 
+function formatConversationTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  if (sameDay) {
+    return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  }
+  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
+function SessionSwitcher({
+  conversations,
+  activeConversationId,
+  onSelect,
+  onNew,
+  onRename,
+  onDelete,
+  disabled = false,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const active = conversations.find((item) => item.id === activeConversationId) || null;
+  const label = active?.title || "新会话";
+
+  const submitRename = () => {
+    const value = renameValue.trim();
+    if (renameTarget && value) onRename(renameTarget.id, value);
+    setRenameTarget(null);
+  };
+
+  return (
+    <div className="session-switcher">
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger
+          disabled={disabled}
+          className="session-trigger"
+          data-disabled={disabled || undefined}
+        >
+          <span className="session-trigger-label">{label}</span>
+          <ChevronDownIcon className="session-trigger-chevron" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="session-menu">
+          <div className="session-menu-label">会话记录</div>
+          {conversations.length ? (
+            conversations.map((item) => (
+              <DropdownMenuItem
+                key={item.id}
+                className="session-item"
+                onSelect={() => onSelect(item.id)}
+              >
+                <span className="session-item-check">
+                  {item.id === activeConversationId ? <CheckIcon /> : null}
+                </span>
+                <span className="session-item-main">
+                  <span className="session-item-title">{item.title || "未命名会话"}</span>
+                  <span className="session-item-meta">
+                    {formatConversationTime(item.updatedAt)} · {item.messageCount || 0} 条
+                  </span>
+                </span>
+                <span className="session-item-actions">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="session-item-action"
+                    title="重命名"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setMenuOpen(false);
+                      setRenameTarget(item);
+                      setRenameValue(item.title || "");
+                    }}
+                  >
+                    <PencilIcon />
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="session-item-action session-item-action-danger"
+                    title="删除"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setMenuOpen(false);
+                      setDeleteTarget(item);
+                    }}
+                  >
+                    <Trash2Icon />
+                  </span>
+                </span>
+              </DropdownMenuItem>
+            ))
+          ) : (
+            <div className="session-empty">还没有历史会话</div>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="session-new" onSelect={() => onNew()}>
+            <MessageSquarePlusIcon />
+            <span>新建会话</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="session-new-button"
+              aria-label="新建会话"
+              disabled={disabled}
+              onClick={() => onNew()}
+            />
+          }
+        >
+          <MessageSquarePlusIcon />
+        </TooltipTrigger>
+        <TooltipContent>新建会话</TooltipContent>
+      </Tooltip>
+
+      <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="session-rename-dialog">
+          <DialogHeader>
+            <DialogTitle>重命名会话</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={renameValue}
+            maxLength={120}
+            onChange={(event) => setRenameValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submitRename();
+              }
+            }}
+            placeholder="会话名称"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>取消</Button>
+            <Button onClick={submitRename} disabled={!renameValue.trim()}>保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除这个会话？</AlertDialogTitle>
+            <AlertDialogDescription>
+              「{deleteTarget?.title || "未命名会话"}」的所有消息记录会被永久删除，且无法恢复。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteTarget) onDelete(deleteTarget.id);
+                setDeleteTarget(null);
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
 export function ConversationPanel({
   current,
   messages,
+  conversations = [],
+  activeConversationId = null,
+  onSelectConversation,
+  onNewConversation,
+  onRenameConversation,
+  onDeleteConversation,
   sending,
   sendingLabel,
   text,
   image,
   selected,
+  activeAnnotation,
+  canApplyStyles = false,
   styleId,
   styles,
   variants,
@@ -180,8 +411,11 @@ export function ConversationPanel({
   onRemoveSelected,
   onClearSelected,
   onCommentChange,
+  onFocusAnnotation,
+  onApplyStyles,
   onSend,
   onSelectVariant,
+  onDismissMessage,
   readOnly = false,
 }) {
   return (
@@ -196,6 +430,18 @@ export function ConversationPanel({
         </Badge>
       </div>
 
+      {current && !readOnly ? (
+        <SessionSwitcher
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onSelect={onSelectConversation}
+          onNew={onNewConversation}
+          onRename={onRenameConversation}
+          onDelete={onDeleteConversation}
+          disabled={sending}
+        />
+      ) : null}
+
       <ScrollArea className="conversation-scroll">
         <div className="conversation-list">
           {messages.map((message, index) => (
@@ -203,6 +449,7 @@ export function ConversationPanel({
               key={message.id || `${message.role}-${index}-${message.text}`}
               message={message}
               onSelectVariant={onSelectVariant}
+              onDismiss={onDismissMessage}
             />
           ))}
           <div ref={chatEndRef} />
@@ -226,38 +473,64 @@ export function ConversationPanel({
                 清空
               </button>
             </div>
-            {selected.map((item, index) => (
-              <div className="annotation-item" key={`${item.file}:${item.line}:${item.column}:${index}`}>
-                <div className="annotation-item-head">
-                  <Badge variant="secondary" className="annotation-index">{index + 1}</Badge>
-                  <span className="annotation-target truncate">
-                    {item.component || item.tagName} · {item.file}:{item.line}
-                  </span>
-                  <button
-                    type="button"
-                    className="annotation-remove"
-                    aria-label="移除该标注"
-                    onClick={() => onRemoveSelected(item)}
+            {selected.map((item, index) => {
+              const styleCount = countStyleEdits(item);
+              const isActive = sameAnnotation(item, activeAnnotation);
+              return (
+                <div
+                  className={cn("annotation-item", isActive && "annotation-item-active")}
+                  key={`${item.file}:${item.line}:${item.column}:${index}`}
+                >
+                  <div
+                    className="annotation-item-head"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onFocusAnnotation?.(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onFocusAnnotation?.(item);
+                      }
+                    }}
                   >
-                    <XIcon />
-                  </button>
+                    <Badge variant={isActive ? "default" : "secondary"} className="annotation-index">
+                      {index + 1}
+                    </Badge>
+                    <span className="annotation-target truncate">
+                      {item.component || item.tagName} · {item.file}:{item.line}
+                    </span>
+                    {styleCount ? (
+                      <Badge variant="outline" className="annotation-style-chip">
+                        <PaletteIcon data-icon="inline-start" />
+                        {styleCount}
+                      </Badge>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="annotation-remove"
+                      aria-label="移除该标注"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRemoveSelected(item);
+                      }}
+                    >
+                      <XIcon />
+                    </button>
+                  </div>
                 </div>
-                <input
-                  type="text"
-                  className="annotation-input"
-                  value={item.comment || ""}
-                  placeholder="描述这个元素的修改（可选）…"
-                  disabled={sending || readOnly}
-                  onChange={(event) => onCommentChange?.(item, event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      onSend();
-                    }
-                  }}
-                />
-              </div>
-            ))}
+              );
+            })}
+            {canApplyStyles ? (
+              <Button
+                variant="outline"
+                className="annotation-apply-styles"
+                disabled={sending || readOnly}
+                onClick={onApplyStyles}
+              >
+                <PaletteIcon data-icon="inline-start" />
+                应用样式修改
+              </Button>
+            ) : null}
           </div>
         ) : null}
         <div className="composer">

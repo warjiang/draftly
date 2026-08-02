@@ -414,6 +414,25 @@ export class DraftStore {
     return { meta, file: normalized, source, version: version ?? meta.versions.length };
   }
 
+  async writeSource(
+    id: unknown,
+    relativeFile: string,
+    content: string,
+  ): Promise<{ file: string }> {
+    const normalized = String(relativeFile).replaceAll('\\', '/');
+    if (!isReadableSourceFile(normalized)) {
+      throw new InvalidDraftPathError(relativeFile);
+    }
+    const absolute = this.resolveProjectFile(id, normalized);
+    const realProject = await fs.realpath(this.projectDir(id));
+    const realFile = await fs.realpath(absolute).catch(() => null);
+    if (!realFile || !realFile.startsWith(`${realProject}${path.sep}`)) {
+      throw new InvalidDraftPathError(relativeFile);
+    }
+    await fs.writeFile(realFile, content, 'utf8');
+    return { file: normalized };
+  }
+
   async listSourceFiles(id: unknown): Promise<{
     files: Array<{ path: string; name: string; size: number }>;
   }> {

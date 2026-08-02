@@ -6,6 +6,7 @@ import {
 } from './draft-prompts.js';
 import type { DraftStore } from './drafts.js';
 import { assertNoEscapingSymlinks, sourceContextForLocator } from './source-locator.js';
+import { applyStyleEditsToSource, sanitizeStyleMap } from './style-edit.js';
 import type {
   CommandRunner,
   ProgressHandler,
@@ -211,6 +212,9 @@ export async function editDraftSource({
   const locatorList = locators?.length ? locators : locator ? [locator] : [];
   if (!locatorList.length) throw new Error('locator required');
   const hasComments = locatorList.some((loc) => loc.comment?.trim());
+  const hasStyleEdits = locatorList.some(
+    (loc) => loc.styleEdits && Object.keys(loc.styleEdits).length > 0,
+  );
   if (!instruction?.trim() && !hasComments) throw new Error('instruction required');
   const contexts = await Promise.all(
     locatorList.map((loc) => sourceContextForLocator({ drafts, id, locator: loc })),
@@ -233,13 +237,14 @@ export async function editDraftSource({
   const historyInstruction = instruction?.trim()
     ? instruction
     : `标注修改 ${locatorList.length} 处元素`;
-  const taskInstruction = hasComments
+  const taskInstruction = hasComments || hasStyleEdits
     ? buildSourceEditInstruction({
         instruction,
         context: combinedContext,
         annotations: locatorList.map((loc, index) => ({
           context: `${contexts[index].file}:\n${contexts[index].context}`,
           comment: loc.comment?.trim() || instruction?.trim() || '按整体目标调整该元素',
+          styleEdits: loc.styleEdits,
         })),
       })
     : buildSourceEditInstruction({
@@ -299,4 +304,85 @@ export async function editDraftByImage({
   });
   onProgress?.({ type: 'pipeline', stage: 'version_saved', version: result.version });
   return { id, title: result.meta.title, version: result.version };
+}
+
+export type StyleEditInput = {
+  file: string;
+  line: number;
+  column: number;
+  styles: Record<string, string>;
+};
+
+export async function applyDraftStyleEdits({
+  drafts,
+  id,
+  edits,
+  onProgress,
+}: {
+  drafts: DraftStore;
+  id: string;
+  edits: StyleEditInput[];
+  onProgress?: ProgressHandler;
+}): Promise<DraftResult & { files: string[] }> {
+  if (!edits?.length) throw new Error('style edits required');
+  // Validate + normalize every edit up front so a bad payload fails before we
+  // touch the workspace.
+  const normalized = edits.map((edit) => {
+    if (
+      !edit.file ||
+      !Number.isInteger(edit.line) ||
+      !Number.isInteger(edit.column)
+    ) {
+      throw new Error('valid file/line/column required for each style edit');
+    }
+    return {
+      file: String(edit.file).replaceAll('\\', '/'),
+      line: edit.line,
+      column: edit.column,
+      styles: sanitizeStyleMap(edit.styles),
+    };
+  });
+  if (normalized.every((edit) => Object.keys(edit.styles).length === 0)) {
+    throw new Error('no style changes to apply');
+  }
+
+  const byFile = new Map<string, typeof normalized>();
+  for (const edit of normalized) {
+    const bucket = byFile.get(edit.file) ?? [];
+    bucket.push(edit);
+    byFile.set(edit.file, bucket);
+  }
+
+  onProgress?.({ type: 'pipeline', stage: 'style_edit_started' });
+  const transaction = await drafts.runVersionTransaction(
+    id,
+    { kind: 'style-edit', instruction: `样式修改 ${normalized.length} 处元素` },
+    async (cwd) => {
+      const files: string[] = [];
+      for (const [file, fileEdits] of byFile) {
+        const { source } = await drafts.readSource(id, file);
+        const next = applyStyleEditsToSource(source, fileEdits);
+        if (next === source) continue;
+        await drafts.writeSource(id, file, next);
+        files.push(file);
+      }
+      if (!files.length) {
+        throw new Error('style edits produced no source changes');
+      }
+      await validateProject(cwd, drafts.run, onProgress);
+      onProgress?.({ type: 'pipeline', stage: 'commit_started' });
+      return { summary: `Applied inline styles to ${files.length} element(s)`, files };
+    },
+  );
+  onProgress?.({
+    type: 'pipeline',
+    stage: 'version_saved',
+    version: transaction.version,
+  });
+  return {
+    id,
+    title: transaction.meta.title,
+    version: transaction.version,
+    files: transaction.outcome.files,
+  };
 }

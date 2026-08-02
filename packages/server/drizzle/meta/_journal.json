@@ -8,6 +8,13 @@
       "when": 1785602194523,
       "tag": "0000_chief_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785688072313,
+      "tag": "0001_noisy_whiplash",
+      "breakpoints": true
     }
   ]
 }
