@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-01T16:57:20.614712+00:00",
+  "brief": {
+    "app_name": "Draftly",
+    "purpose": "A local-first creation tool for product designers, frontend developers, and independent builders that turns product intent and a design system into editable, runnable React interfaces, then supports visual iteration and versioned source",
+    "concept": "Two bold bands, one for product intent and one for the design system, interweave exactly once and lock into a compact open-centered form; the crossing seam represents editable source and iteration, while the resolved inner space represents the working interface. Avoid panels, document pages, browser windows, play symbols, sparkles, stars, robots, chat bubbles, code brackets, cursors, user profiles, and letterforms",
+    "style": "Distinctive Swiss-editorial product mark with industrial-design precision; compact asymmetric geometry, flat solid vector color, two or three large shapes only, strong negative space, recognizable at 16 px, no gradients, no glossy 3D, no micro-detail, no text",
+    "palette": "ultramarine blue #4157D9, warm coral #FF735C, graphite #202225, bone white #F4EFE6",
+    "solid_color": "#F4EFE6"
+  },
+  "generation": {
+    "endpoint": "https://byte.haoduotoken.com/v1/images/generations",
+    "model": "gpt-image-2",
+    "size": "1024x1024",
+    "quality": "high",
+    "chroma_color": "#00FF00",
+    "chroma_tolerance": 72
+  },
+  "candidates": [
+    {
+      "number": 1,
+      "path": "candidates/candidate-1.png",
+      "direction": "Bold geometric silhouette with memorable negative space and the fewest possible shapes.",
+      "prompt": "App: Draftly. Purpose: A local-first creation tool for product designers, frontend developers, and independent builders that turns product intent and a design system into editable, runnable React interfaces, then supports visual iteration and versioned source. Core symbol: Two bold bands, one for product intent and one for the design system, interweave exactly once and lock into a compact open-centered form; the crossing seam represents editable source and iteration, while the resolved inner space represents the working interface. Avoid panels, document pages, browser windows, play symbols, sparkles, stars, robots, chat bubbles, code brackets, cursors, user profiles, and letterforms. Visual style: Distinctive Swiss-editorial product mark with industrial-design precision; compact asymmetric geometry, flat solid vector color, two or three large shapes only, strong negative space, recognizable at 16 px, no gradients, no glossy 3D, no micro-detail, no text. Palette: ultramarine blue #4157D9, warm coral #FF735C, graphite #202225, bone white #F4EFE6. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 1: Bold geometric silhouette with memorable negative space and the fewest possible shapes. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #00FF00. Do not use that chroma color inside the icon. ",
+      "sha256": "b68e1b513bc0059580e8e45de994090ed95abb71e210196b1a7f1e0daa8c350a"
+    },
+    {
+      "number": 2,
+      "path": "candidates/candidate-2.png",
+      "direction": "Friendly dimensional symbol with soft proportions, restrained depth, and a warm product character.",
+      "prompt": "App: Draftly. Purpose: A local-first creation tool for product designers, frontend developers, and independent builders that turns product intent and a design system into editable, runnable React interfaces, then supports visual iteration and versioned source. Core symbol: Two bold bands, one for product intent and one for the design system, interweave exactly once and lock into a compact open-centered form; the crossing seam represents editable source and iteration, while the resolved inner space represents the working interface. Avoid panels, document pages, browser windows, play symbols, sparkles, stars, robots, chat bubbles, code brackets, cursors, user profiles, and letterforms. Visual style: Distinctive Swiss-editorial product mark with industrial-design precision; compact asymmetric geometry, flat solid vector color, two or three large shapes only, strong negative space, recognizable at 16 px, no gradients, no glossy 3D, no micro-detail, no text. Palette: ultramarine blue #4157D9, warm coral #FF735C, graphite #202225, bone white #F4EFE6. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 2: Friendly dimensional symbol with soft proportions, restrained depth, and a warm product character. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #00FF00. Do not use that chroma color inside the icon. ",
+      "sha256": "433816db8a41dfa9a9dd5d9a797cc82f98d9ff332a4d43ecb4aec07fb00114a4"
+    },
+    {
+      "number": 3,
+      "path": "candidates/candidate-3.png",
+      "direction": "Precise modular emblem built from a clear grid, balanced symmetry, and crisp contemporary geometry.",
+      "prompt": "App: Draftly. Purpose: A local-first creation tool for product designers, frontend developers, and independent builders that turns product intent and a design system into editable, runnable React interfaces, then supports visual iteration and versioned source. Core symbol: Two bold bands, one for product intent and one for the design system, interweave exactly once and lock into a compact open-centered form; the crossing seam represents editable source and iteration, while the resolved inner space represents the working interface. Avoid panels, document pages, browser windows, play symbols, sparkles, stars, robots, chat bubbles, code brackets, cursors, user profiles, and letterforms. Visual style: Distinctive Swiss-editorial product mark with industrial-design precision; compact asymmetric geometry, flat solid vector color, two or three large shapes only, strong negative space, recognizable at 16 px, no gradients, no glossy 3D, no micro-detail, no text. Palette: ultramarine blue #4157D9, warm coral #FF735C, graphite #202225, bone white #F4EFE6. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 3: Precise modular emblem built from a clear grid, balanced symmetry, and crisp contemporary geometry. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #00FF00. Do not use that chroma color inside the icon. ",
+      "sha256": "2bd99fe7ca52ead44fdec5d43142bb5422181be7ce46de1267c003301d9fcf76"
+    },
+    {
+      "number": 4,
+      "path": "candidates/candidate-4.png",
+      "direction": "Expressive minimal mark with an unexpected visual metaphor, dynamic balance, and strong motion.",
+      "prompt": "App: Draftly. Purpose: A local-first creation tool for product designers, frontend developers, and independent builders that turns product intent and a design system into editable, runnable React interfaces, then supports visual iteration and versioned source. Core symbol: Two bold bands, one for product intent and one for the design system, interweave exactly once and lock into a compact open-centered form; the crossing seam represents editable source and iteration, while the resolved inner space represents the working interface. Avoid panels, document pages, browser windows, play symbols, sparkles, stars, robots, chat bubbles, code brackets, cursors, user profiles, and letterforms. Visual style: Distinctive Swiss-editorial product mark with industrial-design precision; compact asymmetric geometry, flat solid vector color, two or three large shapes only, strong negative space, recognizable at 16 px, no gradients, no glossy 3D, no micro-detail, no text. Palette: ultramarine blue #4157D9, warm coral #FF735C, graphite #202225, bone white #F4EFE6. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 4: Expressive minimal mark with an unexpected visual metaphor, dynamic balance, and strong motion. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #00FF00. Do not use that chroma color inside the icon. ",
+      "sha256": "04db3e3dd2cbdd7fc2ef6c58fb93a3a169c5028a2159e6fae3ac74b2a129b34b"
+    }
+  ],
+  "status": "awaiting_user_selection",
+  "postprocess": {
+    "enclosed_chroma_removed": true,
+    "method": "global chroma matte with edge feathering and spill correction"
+  }
+}

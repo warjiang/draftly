@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-01T17:03:09.228210+00:00",
+  "brief": {
+    "app_name": "Draftly",
+    "purpose": "A local-first product creation tool for designers and frontend builders that turns an initial brief into a polished, editable, runnable interface",
+    "concept": "A single continuous solid shape starts as an open imperfect square and resolves through one decisive diagonal cut into a precise finished corner; the intentional gap is the editable draft and the resolved corner is the working product. Treat this only as an abstract trademark, never as a depicted object. Avoid loops, knots, ribbons, layers, panels, documents, browser windows, play symbols, sparkles, robots, chat bubbles, code marks, cursors, and letterforms",
+    "style": "Professional identity-design logo mark, not an illustration or icon scene; one-color solid vector silhouette, one connected component plus at most one bold negative-space cutout, visually ownable and drawable from memory in two seconds. Must survive 16 px, black-and-white printing, stamping, and embroidery. No gradients, shading, highlights, texture, perspective, depth, shadows, outlines, secondary accents, app tile, text, or tiny detail",
+    "palette": "pure carbon black #151515 only; no other visible color",
+    "solid_color": "#F3F0E8"
+  },
+  "generation": {
+    "endpoint": "https://byte.haoduotoken.com/v1/images/generations",
+    "model": "gpt-image-2",
+    "size": "1024x1024",
+    "quality": "high",
+    "chroma_color": "#00FF00",
+    "chroma_tolerance": 72
+  },
+  "candidates": [
+    {
+      "number": 1,
+      "path": "candidates/candidate-1.png",
+      "direction": "Bold geometric silhouette with memorable negative space and the fewest possible shapes.",
+      "prompt": "App: Draftly. Purpose: A local-first product creation tool for designers and frontend builders that turns an initial brief into a polished, editable, runnable interface. Core symbol: A single continuous solid shape starts as an open imperfect square and resolves through one decisive diagonal cut into a precise finished corner; the intentional gap is the editable draft and the resolved corner is the working product. Treat this only as an abstract trademark, never as a depicted object. Avoid loops, knots, ribbons, layers, panels, documents, browser windows, play symbols, sparkles, robots, chat bubbles, code marks, cursors, and letterforms. Visual style: Professional identity-design logo mark, not an illustration or icon scene; one-color solid vector silhouette, one connected component plus at most one bold negative-space cutout, visually ownable and drawable from memory in two seconds. Must survive 16 px, black-and-white printing, stamping, and embroidery. No gradients, shading, highlights, texture, perspective, depth, shadows, outlines, secondary accents, app tile, text, or tiny detail. Palette: pure carbon black #151515 only; no other visible color. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 1: Bold geometric silhouette with memorable negative space and the fewest possible shapes. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #00FF00. Do not use that chroma color inside the icon. ",
+      "sha256": "0484edd36a5890f52472877b22d333075c9a0754f5c3539fbbfd0071d4080c2e"
+    },
+    {
+      "number": 2,
+      "path": "candidates/candidate-2.png",
+      "direction": "Friendly dimensional symbol with soft proportions, restrained depth, and a warm product character.",
+      "prompt": "App: Draftly. Purpose: A local-first product creation tool for designers and frontend builders that turns an initial brief into a polished, editable, runnable interface. Core symbol: A single continuous solid shape starts as an open imperfect square and resolves through one decisive diagonal cut into a precise finished corner; the intentional gap is the editable draft and the resolved corner is the working product. Treat this only as an abstract trademark, never as a depicted object. Avoid loops, knots, ribbons, layers, panels, documents, browser windows, play symbols, sparkles, robots, chat bubbles, code marks, cursors, and letterforms. Visual style: Professional identity-design logo mark, not an illustration or icon scene; one-color solid vector silhouette, one connected component plus at most one bold negative-space cutout, visually ownable and drawable from memory in two seconds. Must survive 16 px, black-and-white printing, stamping, and embroidery. No gradients, shading, highlights, texture, perspective, depth, shadows, outlines, secondary accents, app tile, text, or tiny detail. Palette: pure carbon black #151515 only; no other visible color. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 2: Friendly dimensional symbol with soft proportions, restrained depth, and a warm product character. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #00FF00. Do not use that chroma color inside the icon. ",
+      "sha256": "23f6b2962eabfb4b648137bfcb917f7fc9d184b296982b49124fd9f13f747d01"
+    },
+    {
+      "number": 3,
+      "path": "candidates/candidate-3.png",
+      "direction": "Precise modular emblem built from a clear grid, balanced symmetry, and crisp contemporary geometry.",
+      "prompt": "App: Draftly. Purpose: A local-first product creation tool for designers and frontend builders that turns an initial brief into a polished, editable, runnable interface. Core symbol: A single continuous solid shape starts as an open imperfect square and resolves through one decisive diagonal cut into a precise finished corner; the intentional gap is the editable draft and the resolved corner is the working product. Treat this only as an abstract trademark, never as a depicted object. Avoid loops, knots, ribbons, layers, panels, documents, browser windows, play symbols, sparkles, robots, chat bubbles, code marks, cursors, and letterforms. Visual style: Professional identity-design logo mark, not an illustration or icon scene; one-color solid vector silhouette, one connected component plus at most one bold negative-space cutout, visually ownable and drawable from memory in two seconds. Must survive 16 px, black-and-white printing, stamping, and embroidery. No gradients, shading, highlights, texture, perspective, depth, shadows, outlines, secondary accents, app tile, text, or tiny detail. Palette: pure carbon black #151515 only; no other visible color. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 3: Precise modular emblem built from a clear grid, balanced symmetry, and crisp contemporary geometry. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #00FF00. Do not use that chroma color inside the icon. ",
+      "sha256": "37ca727b3d34ba58d16a16e6e3b885f7157c80048d71461c76b9ce900c881629"
+    },
+    {
+      "number": 4,
+      "path": "candidates/candidate-4.png",
+      "direction": "Expressive minimal mark with an unexpected visual metaphor, dynamic balance, and strong motion.",
+      "prompt": "App: Draftly. Purpose: A local-first product creation tool for designers and frontend builders that turns an initial brief into a polished, editable, runnable interface. Core symbol: A single continuous solid shape starts as an open imperfect square and resolves through one decisive diagonal cut into a precise finished corner; the intentional gap is the editable draft and the resolved corner is the working product. Treat this only as an abstract trademark, never as a depicted object. Avoid loops, knots, ribbons, layers, panels, documents, browser windows, play symbols, sparkles, robots, chat bubbles, code marks, cursors, and letterforms. Visual style: Professional identity-design logo mark, not an illustration or icon scene; one-color solid vector silhouette, one connected component plus at most one bold negative-space cutout, visually ownable and drawable from memory in two seconds. Must survive 16 px, black-and-white printing, stamping, and embroidery. No gradients, shading, highlights, texture, perspective, depth, shadows, outlines, secondary accents, app tile, text, or tiny detail. Palette: pure carbon black #151515 only; no other visible color. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 4: Expressive minimal mark with an unexpected visual metaphor, dynamic balance, and strong motion. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #00FF00. Do not use that chroma color inside the icon. ",
+      "sha256": "4eca4b700a684613a6df72e7e7036249c0774c24d4cd38654b13b6f76f6e23b6"
+    }
+  ],
+  "status": "awaiting_user_selection",
+  "postprocess": {
+    "monochrome_normalized": true,
+    "foreground": "#151515",
+    "method": "global chroma matte, alpha feathering, and pure one-color normalization"
+  }
+}

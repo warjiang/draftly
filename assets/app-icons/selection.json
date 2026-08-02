@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-01T16:42:19.373418+00:00",
+  "brief": {
+    "app_name": "Draftly",
+    "purpose": "A local-first AI prototype studio that turns a written product idea and DESIGN.md into editable, runnable React interfaces with live preview and version history",
+    "concept": "A draft sheet or interface frame folding into a four-point spark: ideas becoming polished, runnable UI; optionally hint at modular code blocks through bold negative space",
+    "style": "Quietly premium, editorial developer-tool aesthetic; simple geometric silhouette, warm and precise, distinctive at 16 px, no letters or text",
+    "palette": "pine green #347B69, warm ivory #F4F1EA, deep ink #27231E, restrained pale mint accent",
+    "solid_color": "#F4F1EA"
+  },
+  "generation": {
+    "endpoint": "https://byte.haoduotoken.com/v1/images/generations",
+    "model": "gpt-image-2",
+    "size": "1024x1024",
+    "quality": "high",
+    "chroma_color": "#FF00FF",
+    "chroma_tolerance": 72
+  },
+  "candidates": [
+    {
+      "number": 1,
+      "path": "candidates/candidate-1.png",
+      "direction": "Bold geometric silhouette with memorable negative space and the fewest possible shapes.",
+      "prompt": "App: Draftly. Purpose: A local-first AI prototype studio that turns a written product idea and DESIGN.md into editable, runnable React interfaces with live preview and version history. Core symbol: A draft sheet or interface frame folding into a four-point spark: ideas becoming polished, runnable UI; optionally hint at modular code blocks through bold negative space. Visual style: Quietly premium, editorial developer-tool aesthetic; simple geometric silhouette, warm and precise, distinctive at 16 px, no letters or text. Palette: pine green #347B69, warm ivory #F4F1EA, deep ink #27231E, restrained pale mint accent. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 1: Bold geometric silhouette with memorable negative space and the fewest possible shapes. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #FF00FF. Do not use that chroma color inside the icon. ",
+      "sha256": "2680ea54f27a0ee7570c89aa039002ae5850e2b0535e1afbc485e710ac26120d"
+    },
+    {
+      "number": 2,
+      "path": "candidates/candidate-2.png",
+      "direction": "Friendly dimensional symbol with soft proportions, restrained depth, and a warm product character.",
+      "prompt": "App: Draftly. Purpose: A local-first AI prototype studio that turns a written product idea and DESIGN.md into editable, runnable React interfaces with live preview and version history. Core symbol: A draft sheet or interface frame folding into a four-point spark: ideas becoming polished, runnable UI; optionally hint at modular code blocks through bold negative space. Visual style: Quietly premium, editorial developer-tool aesthetic; simple geometric silhouette, warm and precise, distinctive at 16 px, no letters or text. Palette: pine green #347B69, warm ivory #F4F1EA, deep ink #27231E, restrained pale mint accent. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 2: Friendly dimensional symbol with soft proportions, restrained depth, and a warm product character. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #FF00FF. Do not use that chroma color inside the icon. ",
+      "sha256": "906b12f14f8ea52db99f4927d0e26b566a3408acef1b834cb99b0d55f94354f7"
+    },
+    {
+      "number": 3,
+      "path": "candidates/candidate-3.png",
+      "direction": "Precise modular emblem built from a clear grid, balanced symmetry, and crisp contemporary geometry.",
+      "prompt": "App: Draftly. Purpose: A local-first AI prototype studio that turns a written product idea and DESIGN.md into editable, runnable React interfaces with live preview and version history. Core symbol: A draft sheet or interface frame folding into a four-point spark: ideas becoming polished, runnable UI; optionally hint at modular code blocks through bold negative space. Visual style: Quietly premium, editorial developer-tool aesthetic; simple geometric silhouette, warm and precise, distinctive at 16 px, no letters or text. Palette: pine green #347B69, warm ivory #F4F1EA, deep ink #27231E, restrained pale mint accent. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 3: Precise modular emblem built from a clear grid, balanced symmetry, and crisp contemporary geometry. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #FF00FF. Do not use that chroma color inside the icon. ",
+      "sha256": "d6bca671a2ccc6b3668b458312d82e303939cf3145cf031f0fc1047ed37a4aff"
+    },
+    {
+      "number": 4,
+      "path": "candidates/candidate-4.png",
+      "direction": "Expressive minimal mark with an unexpected visual metaphor, dynamic balance, and strong motion.",
+      "prompt": "App: Draftly. Purpose: A local-first AI prototype studio that turns a written product idea and DESIGN.md into editable, runnable React interfaces with live preview and version history. Core symbol: A draft sheet or interface frame folding into a four-point spark: ideas becoming polished, runnable UI; optionally hint at modular code blocks through bold negative space. Visual style: Quietly premium, editorial developer-tool aesthetic; simple geometric silhouette, warm and precise, distinctive at 16 px, no letters or text. Palette: pine green #347B69, warm ivory #F4F1EA, deep ink #27231E, restrained pale mint accent. Create a distinctive, original product icon with simple geometry, excellent silhouette, clear hierarchy, no letters, no words, no watermark, no device mockup, and no UI screenshot. Candidate direction 4: Expressive minimal mark with an unexpected visual metaphor, dynamic balance, and strong motion. Render only one standalone brand symbol, centered and front-facing, with no enclosing app tile and no cast shadow. Keep all visible artwork within the central 72 percent of a square canvas. The entire background, including every edge and corner, must be one perfectly uniform flat chroma color #FF00FF. Do not use that chroma color inside the icon. ",
+      "sha256": "27686267d9660450af641c10560f7646e3a68ff594aa7a3c96f831b7c6b4cef4"
+    }
+  ],
+  "status": "awaiting_user_selection"
+}
