@@ -25,6 +25,7 @@ import { assertNoEscapingSymlinks } from './source-locator.js';
 import { getTemplate, loadTemplates, templateSummary } from './templates.js';
 import type {
   ErrorWithStatus,
+  PiRunConfig,
   PreviewManagerLike,
   ProgressHandler,
   ProjectDesign,
@@ -152,6 +153,21 @@ export function createApiApp({
   });
 
   app.get('/api/me', (c) => json(c, { user: c.get('auth').user }));
+
+  let piModelsCache: { at: number; data: unknown } | null = null;
+  app.get('/api/pi/models', async (c) => {
+    if (!provider?.listModels) return json(c, { models: [], defaults: {} });
+    if (piModelsCache && Date.now() - piModelsCache.at < 5 * 60_000) {
+      return json(c, piModelsCache.data);
+    }
+    try {
+      const data = await provider.listModels();
+      piModelsCache = { at: Date.now(), data };
+      return json(c, data);
+    } catch (error) {
+      return json(c, { error: errorWithStatus(error).message, models: [], defaults: {} }, 502);
+    }
+  });
 
   app.get('/api/invitations', async (c) =>
     json(c, { invitations: await collaboration(projects).pendingInvitations() }));
@@ -433,12 +449,14 @@ export function createApiApp({
   app.post('/api/drafts/:id/iterate', async (c) => {
     const input = await readJson<{ instruction?: string }>(c);
     if (!input.instruction?.trim()) return json(c, { error: 'instruction required' }, 400);
+    const piConfig = piConfigFromInput(input);
     const execute: Operation<Awaited<ReturnType<typeof iterateDraft>>> = async (onProgress) => {
       const result = await iterateDraft({
         drafts,
         provider,
         id: c.req.param('id'),
         instruction: input.instruction!,
+        piConfig,
         onProgress,
       });
       await projects.touchByDraft(c.req.param('id'));
@@ -463,6 +481,7 @@ export function createApiApp({
     if (!input.instruction?.trim() && !hasComments) {
       return json(c, { error: 'instruction required' }, 400);
     }
+    const piConfig = piConfigFromInput(input);
     const execute: Operation<Awaited<ReturnType<typeof editDraftSource>>> = async (onProgress) => {
       const result = await editDraftSource({
         drafts,
@@ -470,6 +489,7 @@ export function createApiApp({
         id: c.req.param('id'),
         locators: locatorList,
         instruction: input.instruction ?? '',
+        piConfig,
         onProgress,
       });
       await projects.touchByDraft(c.req.param('id'));
@@ -516,6 +536,7 @@ export function createApiApp({
     const input = await readJson<{ image?: string; instruction?: string }>(c);
     if (!input.image) return json(c, { error: 'image required' }, 400);
     if (!input.instruction?.trim()) return json(c, { error: 'instruction required' }, 400);
+    const piConfig = piConfigFromInput(input);
     const execute: Operation<Awaited<ReturnType<typeof editDraftByImage>>> = async (onProgress) => {
       const result = await editDraftByImage({
         drafts,
@@ -523,6 +544,7 @@ export function createApiApp({
         id: c.req.param('id'),
         image: input.image!,
         instruction: input.instruction!,
+        piConfig,
         onProgress,
       });
       await projects.touchByDraft(c.req.param('id'));
@@ -708,6 +730,17 @@ function projectSummary(project: ProjectMeta) {
 function collaboration(projects: ProjectStoreLike): CollaborationStore {
   if ('pendingInvitations' in projects) return projects as CollaborationStore;
   throw Object.assign(new Error('collaboration store unavailable'), { status: 501 });
+}
+
+// Extract optional per-request pi overrides from a JSON body. Values are
+// re-validated by the pi harness before reaching the CLI argv.
+function piConfigFromInput(input: JsonObject): PiRunConfig | undefined {
+  const config: PiRunConfig = {};
+  for (const key of ['provider', 'model', 'thinking'] as const) {
+    const value = input[key];
+    if (typeof value === 'string' && value.trim()) config[key] = value.trim();
+  }
+  return Object.keys(config).length ? config : undefined;
 }
 
 async function readJson<T extends JsonObject>(c: Context<AppEnv>): Promise<T> {

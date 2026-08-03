@@ -74,6 +74,11 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
   const [membersOpen, setMembersOpen] = useState(false);
   const [rollbackVersion, setRollbackVersion] = useState(null);
   const [text, setText] = useState("");
+  const [piModels, setPiModels] = useState([]);
+  const [piDefaults, setPiDefaults] = useState({});
+  // Session-only pi overrides; "__default__" means follow the server config.
+  const [piModel, setPiModel] = useState("__default__");
+  const [piThinking, setPiThinking] = useState("__default__");
   const [loadingProject, setLoadingProject] = useState(true);
   const [projectError, setProjectError] = useState("");
   const [chatWidth, setChatWidth] = useState(() => {
@@ -374,6 +379,14 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
             ? `已修改 ${selected.length} 个元素`
             : `已修改 ${first.component || `<${first.tagName}>`}`;
       }
+      if (piModel !== "__default__") {
+        const [provider, model] = piModel.split("::");
+        if (provider && model) {
+          body.provider = provider;
+          body.model = model;
+        }
+      }
+      if (piThinking !== "__default__") body.thinking = piThinking;
       await apiStream(endpoint, body, (event) => updateProgress(pending, event, cid));
       const loaded = await loadDraftIntoView(current.meta.id);
       if (!loaded) return;
@@ -412,6 +425,8 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
     image,
     loadDraftIntoView,
     persistMessage,
+    piModel,
+    piThinking,
     pushMessage,
     refreshConversationList,
     replaceMessage,
@@ -422,6 +437,18 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
     updateProgress,
     readOnly,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api("/api/pi/models")
+      .then((data) => {
+        if (cancelled) return;
+        setPiModels(Array.isArray(data.models) ? data.models : []);
+        setPiDefaults(data.defaults || {});
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -880,6 +907,12 @@ export function ProjectWorkspace({ projectId, user, onSignOut, onNavigate }) {
             onSend={send}
             onSelectVariant={enterDraft}
             onDismissMessage={dismissMessage}
+            piModels={piModels}
+            piDefaults={piDefaults}
+            piModel={piModel}
+            piThinking={piThinking}
+            onPiModelChange={setPiModel}
+            onPiThinkingChange={setPiThinking}
             readOnly={readOnly}
           />
         </main>
