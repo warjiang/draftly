@@ -9,6 +9,7 @@ import { assertNoEscapingSymlinks, sourceContextForLocator } from './source-loca
 import { applyStyleEditsToSource, sanitizeStyleMap } from './style-edit.js';
 import type {
   CommandRunner,
+  PiRunConfig,
   ProgressHandler,
   SourceLocator,
   WorkspaceProvider,
@@ -30,6 +31,7 @@ type VersionTaskOptions = {
   instruction: string;
   taskInstruction: string;
   images?: string[];
+  piConfig?: PiRunConfig;
   onProgress?: ProgressHandler;
   variant?: number;
 };
@@ -58,6 +60,7 @@ async function executeVersionTask({
   instruction,
   taskInstruction,
   images = [],
+  piConfig,
   onProgress,
   variant,
 }: VersionTaskOptions) {
@@ -71,6 +74,7 @@ async function executeVersionTask({
         cwd,
         instruction: taskInstruction,
         images,
+        config: piConfig,
         onEvent: (event) => onProgress?.({ type: 'pi', variant, event }),
       });
       onProgress?.({ type: 'pipeline', stage: 'agent_completed', variant });
@@ -163,12 +167,14 @@ export async function iterateDraft({
   provider,
   id,
   instruction,
+  piConfig,
   onProgress,
 }: {
   drafts: DraftStore;
   provider?: WorkspaceProvider;
   id: string;
   instruction: string;
+  piConfig?: PiRunConfig;
   onProgress?: ProgressHandler;
 }): Promise<DraftResult> {
   if (!instruction?.trim()) throw new Error('instruction required');
@@ -180,6 +186,7 @@ export async function iterateDraft({
     kind: 'iterate',
     instruction,
     taskInstruction: buildIterateInstruction({ instruction }),
+    piConfig,
     onProgress,
   });
   onProgress?.({ type: 'pipeline', stage: 'version_saved', version: result.version });
@@ -193,6 +200,7 @@ export async function editDraftSource({
   locator,
   locators,
   instruction,
+  piConfig,
   onProgress,
 }: {
   drafts: DraftStore;
@@ -201,6 +209,7 @@ export async function editDraftSource({
   locator?: SourceLocator;
   locators?: SourceLocator[];
   instruction: string;
+  piConfig?: PiRunConfig;
   onProgress?: ProgressHandler;
 }): Promise<DraftResult & {
   locator: {
@@ -259,6 +268,7 @@ export async function editDraftSource({
     kind: 'edit-source',
     instruction: historyInstruction,
     taskInstruction,
+    piConfig,
     onProgress,
   });
   onProgress?.({ type: 'pipeline', stage: 'version_saved', version: result.version });
@@ -280,6 +290,7 @@ export async function editDraftByImage({
   id,
   image,
   instruction,
+  piConfig,
   onProgress,
 }: {
   drafts: DraftStore;
@@ -287,6 +298,7 @@ export async function editDraftByImage({
   id: string;
   image: string;
   instruction: string;
+  piConfig?: PiRunConfig;
   onProgress?: ProgressHandler;
 }): Promise<DraftResult> {
   if (!instruction?.trim()) throw new Error('instruction required');
@@ -300,6 +312,7 @@ export async function editDraftByImage({
     instruction,
     taskInstruction: buildImageEditInstruction({ instruction }),
     images: [image],
+    piConfig,
     onProgress,
   });
   onProgress?.({ type: 'pipeline', stage: 'version_saved', version: result.version });

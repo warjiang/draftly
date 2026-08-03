@@ -39,16 +39,35 @@ export type PiPublicEvent = {
   };
 };
 
+export const PI_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+export type PiThinkingLevel = (typeof PI_THINKING_LEVELS)[number];
+
+export type PiRunConfig = {
+  provider?: string;
+  model?: string;
+  thinking?: string;
+};
+
+export type PiModelInfo = {
+  provider: string;
+  id: string;
+  thinking: boolean;
+  images: boolean;
+};
+
 export type PiTaskOptions = {
   cwd: string;
   instruction: string;
   images?: string[];
   systemPrompt?: string;
+  config?: PiRunConfig;
   onEvent?: (event: PiPublicEvent) => void;
 };
 
 export interface WorkspaceProvider {
   runTask(options: PiTaskOptions): Promise<string>;
+  listModels?(): Promise<{ models: PiModelInfo[]; defaults: PiRunConfig }>;
 }
 
 export type PipelineEvent = {

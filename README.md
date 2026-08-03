@@ -65,6 +65,9 @@ DRAFTLY_PI_MODEL=k3
 KIMI_API_KEY=<your-kimi-api-key>
 ```
 
+以上环境变量只是默认值。在编辑器的设计对话面板中，可以为每次请求临时选择模型与思考强度
+（下拉数据来自服务端 `pi --list-models`），该选择仅对当前浏览器会话生效，不会持久化。
+
 也可以在宿主机运行 `pi` 并通过 `/login` 登录，然后将生成的 `~/.pi/agent/` 复制到
 `${PI_CONFIG_DIR}/agent/`。开发和生产容器都固定通过
 `PI_CODING_AGENT_DIR=/home/node/.pi/agent` 读取该目录。该挂载必须可写，因为 Pi 会维护

@@ -2,7 +2,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import type { PiPublicEvent, PiTaskOptions, WorkspaceProvider } from "./types.js";
+import {
+  PI_THINKING_LEVELS,
+  type PiModelInfo,
+  type PiPublicEvent,
+  type PiRunConfig,
+  type PiTaskOptions,
+  type WorkspaceProvider,
+} from "./types.js";
 
 type PiMessage = {
   role?: string;
@@ -88,6 +95,51 @@ function publicPiEvent(event: RawPiEvent): PiPublicEvent {
     };
   }
   return result;
+}
+
+// A conservative allowlist for values forwarded to the pi CLI so a request
+// body can never smuggle extra flags into the child process argv.
+const SAFE_CLI_VALUE = /^[a-zA-Z0-9._\/:-]{1,120}$/;
+
+function safeCliValue(value: unknown): string {
+  const text = String(value ?? "").trim();
+  return SAFE_CLI_VALUE.test(text) ? text : "";
+}
+
+function normalizeThinking(value: unknown): string {
+  const text = String(value ?? "").trim().toLowerCase();
+  return (PI_THINKING_LEVELS as readonly string[]).includes(text) ? text : "";
+}
+
+function envDefaults(): PiRunConfig {
+  const defaults: PiRunConfig = {};
+  const provider = safeCliValue(process.env.DRAFTLY_PI_PROVIDER);
+  const model = safeCliValue(process.env.DRAFTLY_PI_MODEL);
+  const thinking = normalizeThinking(process.env.DRAFTLY_PI_THINKING);
+  if (provider) defaults.provider = provider;
+  if (model) defaults.model = model;
+  if (thinking) defaults.thinking = thinking;
+  return defaults;
+}
+
+// Parse the whitespace-aligned table emitted by `pi --list-models`:
+//   provider        model             context  max-out  thinking  images
+//   kimi-coding     k3                262.1K   262.1K   yes       yes
+function parseModelList(output: string): PiModelInfo[] {
+  const models: PiModelInfo[] = [];
+  for (const line of output.split("\n")) {
+    const columns = line.trim().split(/\s+/);
+    if (columns.length < 2) continue;
+    const [provider, id] = columns;
+    if (provider === "provider" && id === "model") continue;
+    models.push({
+      provider,
+      id,
+      thinking: columns[4] === "yes",
+      images: columns[5] === "yes",
+    });
+  }
+  return models;
 }
 
 function runPi({
@@ -176,6 +228,7 @@ export class PiHarnessProvider implements WorkspaceProvider {
       instruction,
       images = [],
       systemPrompt = '',
+      config = {},
       onEvent,
     }: PiTaskOptions): Promise<string> {
       const normalizedImages = images.map(dataUrlToImage);
@@ -195,9 +248,13 @@ export class PiHarnessProvider implements WorkspaceProvider {
           '--no-approve',
         ];
         if (systemPrompt) args.push('--append-system-prompt', systemPrompt);
-        if (process.env.DRAFTLY_PI_PROVIDER) args.push('--provider', process.env.DRAFTLY_PI_PROVIDER);
-        if (process.env.DRAFTLY_PI_MODEL) args.push('--model', process.env.DRAFTLY_PI_MODEL);
-        if (process.env.DRAFTLY_PI_THINKING) args.push('--thinking', process.env.DRAFTLY_PI_THINKING);
+        const defaults = envDefaults();
+        const provider = safeCliValue(config.provider) || defaults.provider;
+        const model = safeCliValue(config.model) || defaults.model;
+        const thinking = normalizeThinking(config.thinking) || defaults.thinking;
+        if (provider) args.push('--provider', provider);
+        if (model) args.push('--model', model);
+        if (thinking) args.push('--thinking', thinking);
         for (let index = 0; index < normalizedImages.length; index += 1) {
           const image = normalizedImages[index];
           const imagePath = path.join(tempDir!, `image-${index + 1}.${image.extension}`);
@@ -214,6 +271,35 @@ export class PiHarnessProvider implements WorkspaceProvider {
       } finally {
         if (tempDir) await fs.rm(tempDir, { recursive: true, force: true });
     }
+  }
+
+  async listModels(): Promise<{ models: PiModelInfo[]; defaults: PiRunConfig }> {
+    const defaults = envDefaults();
+    const output = await new Promise<string>((resolve, reject) => {
+      const child = spawn(this.command, ['--list-models'], {
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (chunk) => { stdout += chunk; });
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      child.on('error', (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') {
+          reject(new Error(`Pi CLI not found: ${this.command}`));
+          return;
+        }
+        reject(error);
+      });
+      child.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`pi --list-models failed (${code}): ${stderr.trim() || 'unknown error'}`));
+          return;
+        }
+        resolve(stdout);
+      });
+    });
+    return { models: parseModelList(output), defaults };
   }
 }
 

@@ -43,13 +43,78 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { groupProgressSteps } from "@/lib/progress";
 import { countStyleEdits, sameAnnotation } from "@/lib/annotations";
+
+const PI_THINKING_OPTIONS = [
+  ["off", "关闭思考"],
+  ["minimal", "极简"],
+  ["low", "低"],
+  ["medium", "中"],
+  ["high", "高"],
+  ["xhigh", "超高"],
+  ["max", "最大"],
+];
+
+function PiOptions({ models, defaults, model, thinking, disabled, onModelChange, onThinkingChange }) {
+  const providers = [];
+  for (const item of models) {
+    let group = providers.find(([name]) => name === item.provider);
+    if (!group) {
+      group = [item.provider, []];
+      providers.push(group);
+    }
+    group[1].push(item);
+  }
+  const defaultModelLabel = defaults?.model
+    ? `默认 · ${defaults.model}`
+    : "默认模型";
+  const defaultThinkingLabel = defaults?.thinking
+    ? `思考 · ${defaults.thinking}`
+    : "默认思考";
+  const modelLabel = model === "__default__" ? defaultModelLabel : model.split("::")[1] || model;
+  const thinkingLabel = thinking === "__default__"
+    ? defaultThinkingLabel
+    : `思考 · ${PI_THINKING_OPTIONS.find(([value]) => value === thinking)?.[1] || thinking}`;
+  return (
+    <div className="pi-options">
+      <Select value={model} disabled={disabled} onValueChange={onModelChange}>
+        <SelectTrigger aria-label="选择模型"><SelectValue>{modelLabel}</SelectValue></SelectTrigger>
+        <SelectContent className="min-w-56">
+          <SelectGroup>
+            <SelectItem value="__default__">{defaultModelLabel}</SelectItem>
+          </SelectGroup>
+          {providers.map(([provider, items]) => (
+            <SelectGroup key={provider}>
+              <SelectLabel>{provider}</SelectLabel>
+              {items.map((item) => (
+                <SelectItem key={`${item.provider}::${item.id}`} value={`${item.provider}::${item.id}`}>
+                  {item.id}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={thinking} disabled={disabled} onValueChange={onThinkingChange}>
+        <SelectTrigger aria-label="选择思考强度"><SelectValue>{thinkingLabel}</SelectValue></SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="__default__">{defaultThinkingLabel}</SelectItem>
+            {PI_THINKING_OPTIONS.map(([value, label]) => (
+              <SelectItem key={value} value={value}>{label}</SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
 
 function ProgressTree({ steps }) {
   return (
@@ -416,6 +481,12 @@ export function ConversationPanel({
   onSend,
   onSelectVariant,
   onDismissMessage,
+  piModels = [],
+  piDefaults = {},
+  piModel = "__default__",
+  piThinking = "__default__",
+  onPiModelChange,
+  onPiThinkingChange,
   readOnly = false,
 }) {
   return (
@@ -564,7 +635,17 @@ export function ConversationPanel({
               </TooltipTrigger>
               <TooltipContent>附加参考截图</TooltipContent>
             </Tooltip>
-            {!current ? (
+            {current ? (
+              <PiOptions
+                models={piModels}
+                defaults={piDefaults}
+                model={piModel}
+                thinking={piThinking}
+                disabled={sending || readOnly}
+                onModelChange={onPiModelChange}
+                onThinkingChange={onPiThinkingChange}
+              />
+            ) : (
               <div className="generation-options">
                 <Select value={styleId} disabled={sending} onValueChange={onStyleChange}>
                   <SelectTrigger><SelectValue placeholder="默认风格" /></SelectTrigger>
@@ -586,7 +667,7 @@ export function ConversationPanel({
                   </SelectContent>
                 </Select>
               </div>
-            ) : null}
+            )}
             <Button
               size="icon-lg"
               className="ml-auto"

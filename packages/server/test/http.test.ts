@@ -175,6 +175,38 @@ test('extracts a design offline and validates request bodies', async () => {
   assert.equal((await app.request('/api/no-such-route')).status, 404);
 });
 
+test('lists pi models with defaults and degrades without listModels support', async () => {
+  const withoutListing = await app.request('/api/pi/models');
+  assert.equal(withoutListing.status, 200);
+  assert.deepEqual(await withoutListing.json(), { models: [], defaults: {} });
+
+  let calls = 0;
+  const listing = createApiApp({
+    auth: createTestAuth(),
+    drafts,
+    provider: {
+      runTask: async () => 'unused',
+      listModels: async () => {
+        calls += 1;
+        return {
+          models: [{ provider: 'kimi-coding', id: 'k3', thinking: true, images: true }],
+          defaults: { provider: 'kimi-coding', model: 'k3', thinking: 'medium' },
+        };
+      },
+    },
+  }).app;
+  const response = await listing.request('/api/pi/models');
+  assert.equal(response.status, 200);
+  const data = await response.json() as {
+    models: Array<{ provider: string; id: string }>;
+    defaults: { model?: string };
+  };
+  assert.equal(data.models[0].id, 'k3');
+  assert.equal(data.defaults.model, 'k3');
+  await listing.request('/api/pi/models');
+  assert.equal(calls, 1); // second hit served from cache
+});
+
 test('rejects API request bodies larger than 10 MB', async () => {
   const response = await app.request('/api/extract', {
     method: 'POST',
